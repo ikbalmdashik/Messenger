@@ -9,6 +9,10 @@ export class CreateUserDto {
     role: string;
 }
 
+export class UpdateUserDto {
+    
+}
+
 export class LoginDto {
     email: string;
     password: string;

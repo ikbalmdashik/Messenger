@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateAuthDto, CreateUserDto, LoginDto } from './dto/create-auth.dto';
+import { CreateAuthDto, CreateUserDto, LoginDto, UpdateUserDto } from './dto/create-auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -29,5 +29,15 @@ export class AuthController {
   @Get('getUser/:id')
   async GetDataById(@Param('id') id: number) {
     return this.authService.GetDataById(+id);
+  }
+
+  @Post('/updateUser')
+  async UpdateUser(@Body() updateUserDto: Partial<UpdateUserDto>) {
+    return await this.authService.UpdateUser(updateUserDto);
+  }
+
+  @Post('/deleteUser')
+  async DeleteUser(@Body() id: {id: number}) {
+    return await this.authService.DeleteUser(id.id);
   }
 }

@@ -18,81 +18,152 @@ import {
     Pencil,
     Trash2,
     X,
+    Check,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
 import useCurrentUser, { initialUser } from "@/app/hooks/user/useCurrentUser";
+import axios from "axios";
+import API_ENDPOINTS from "@/app/routes/api";
+import { toast } from "sonner";
 
 const ProfileDialog = () => {
     const [userId, setUserId] = useState<number | null>(null);
     const [open, setOpen] = useState(false);
     const [editable, setEditable] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
-    const [hasChanged, setHasChanged] = useState(false);
-
-    useEffect(() => {
-        const id = Number(sessionStorage.getItem("loginId"));
-        if (!isNaN(id)) setUserId(id);
-    }, [userId]);
+    const [formInitialValues, setFormInitialValues] = useState({
+        fullName: "",
+        email: "",
+        phone: "",
+    });
 
     const user = useCurrentUser(userId);
     const isLoading = userId === null || user === initialUser;
 
-    const [formData, setFormData] = useState({
-        fullName: "",
-        email: "",
-        phone: "",
-        role: "",
+    const { register, reset, watch } = useForm({
+        defaultValues: {
+            fullName: "",
+            email: "",
+            phone: "",
+            role: "",
+        },
     });
+
+    const watchFields = watch();
+
+    useEffect(() => {
+        const id = Number(sessionStorage.getItem("loginId"));
+        if (!isNaN(id)) setUserId(id);
+    }, []);
 
     useEffect(() => {
         if (user && user !== initialUser) {
-            const newForm = {
+            reset({
                 fullName: user.fullName || "",
                 email: user.email || "",
                 phone: user.phone || "",
                 role: user.role || "",
-            };
-            setFormData(newForm);
-            setHasChanged(false);
+            });
+            setFormInitialValues({
+                fullName: user.fullName || "",
+                email: user.email || "",
+                phone: user.phone || "",
+            });
         }
-    }, [user]);
+    }, [user, reset]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setFormData((prev) => {
-            const updated = { ...prev, [name]: value };
-            const changed =
-                updated.fullName !== user.fullName ||
-                updated.email !== user.email ||
-                updated.phone !== user.phone;
-            setHasChanged(changed);
-            return updated;
-        });
+    const hasChanged =
+        watchFields.fullName !== formInitialValues.fullName ||
+        watchFields.email !== formInitialValues.email ||
+        watchFields.phone !== formInitialValues.phone;
+
+    const handleUpdate = async () => {
+        try {
+            const updatedData = {
+                userId,
+                fullName: watchFields.fullName,
+                email: watchFields.email,
+                phone: watchFields.phone,
+                role: watchFields.role,
+            };
+
+            await axios.post(API_ENDPOINTS.UpdateUser, updatedData);
+
+            toast.success("Profile updated successfully.");
+
+            setFormInitialValues({
+                fullName: updatedData.fullName,
+                email: updatedData.email,
+                phone: updatedData.phone,
+            });
+
+            setEditable(false);
+        } catch (error) {
+            toast.error("Failed to update profile.");
+            console.error(error);
+        }
     };
 
-    const handleUpdate = () => {
-        console.log("Updated data:", {
-            fullName: formData.fullName,
-            email: formData.email,
-            phone: formData.phone,
-        });
-        setEditable(false);
-        setHasChanged(false);
-    };
+    const handleConfirmDelete = async () => {
+        try {
+            // Simulate delete API
+            await axios.post(API_ENDPOINTS.DeleteUser, { id: userId });
 
-    const handleConfirmDelete = () => {
-        console.log("Deleted user:", formData);
-        setConfirmDelete(false);
-        setOpen(false);
+            toast.custom((t) => (
+                <div className="flex items-center gap-4 bg-red-600 text-white px-4 py-2 rounded shadow">
+                    <Trash2 className="w-5 h-5" />
+                    <div>
+                        <p className="font-semibold">User Deleted</p>
+                        <p className="text-sm opacity-90">The user account has been successfully deleted.</p>
+                    </div>
+                    <button onClick={() => toast.dismiss(t)} className="ml-auto font-bold px-2">
+                        ×
+                    </button>
+                </div>
+            ));
+
+            setConfirmDelete(false);
+            setOpen(false);
+        } catch (error) {
+            toast.custom((t) => (
+                <div className="flex items-center gap-4 bg-red-500 text-white px-4 py-2 rounded shadow">
+                    <X className="w-5 h-5" />
+                    <div>
+                        <p className="font-semibold">Delete Failed</p>
+                        <p className="text-sm opacity-90">Something went wrong. Please try again.</p>
+                    </div>
+                    <button onClick={() => toast.dismiss(t)} className="ml-auto font-bold px-2">
+                        ×
+                    </button>
+                </div>
+            ));
+        }
     };
 
     const myProfileClick = async () => {
+        try {
+            const profile = (
+                await axios.get(API_ENDPOINTS.GetUserById + userId)
+            ).data;
 
-    }
+            setFormInitialValues({
+                fullName: profile.fullName,
+                email: profile.email,
+                phone: profile.phone,
+            });
+
+            reset(profile);
+            setEditable(false);
+            setOpen(true);
+        } catch (err) {
+            toast.error("Failed to fetch profile.");
+        }
+    };
 
     return (
         <>
-            <Dialog open={open} onOpenChange={(o) => setOpen(o)}>
+            <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
                     <Button
                         variant="outline"
@@ -124,9 +195,7 @@ const ProfileDialog = () => {
                             <div className="relative">
                                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <Input
-                                    name="fullName"
-                                    value={formData.fullName}
-                                    onChange={handleChange}
+                                    {...register("fullName")}
                                     disabled={!editable}
                                     placeholder="Full Name"
                                     className="pl-10"
@@ -137,9 +206,7 @@ const ProfileDialog = () => {
                             <div className="relative">
                                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <Input
-                                    name="email"
-                                    value={formData.email}
-                                    onChange={handleChange}
+                                    {...register("email")}
                                     disabled={!editable}
                                     placeholder="Email"
                                     className="pl-10"
@@ -150,21 +217,18 @@ const ProfileDialog = () => {
                             <div className="relative">
                                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <Input
-                                    name="phone"
-                                    value={formData.phone}
-                                    onChange={handleChange}
+                                    {...register("phone")}
                                     disabled={!editable}
                                     placeholder="Phone"
                                     className="pl-10"
                                 />
                             </div>
 
-                            {/* Role (not editable) */}
+                            {/* Role */}
                             <div className="relative">
                                 <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <Input
-                                    name="role"
-                                    value={formData.role}
+                                    {...register("role")}
                                     disabled
                                     placeholder="Role"
                                     className="pl-10"
@@ -184,17 +248,36 @@ const ProfileDialog = () => {
 
                                 <Button
                                     variant="secondary"
-                                    disabled={editable && !hasChanged}
                                     onClick={() => {
-                                        if (editable && hasChanged) {
-                                            handleUpdate();
-                                        } else {
+                                        if (!editable) {
                                             setEditable(true);
+                                        } else if (editable && hasChanged) {
+                                            handleUpdate();
+                                        } else if (editable && !hasChanged) {
+                                            reset(formInitialValues);
+                                            setEditable(false);
+                                            toast("Changes discarded.");
                                         }
                                     }}
                                 >
-                                    <Pencil className="w-4 h-4 mr-2" />
-                                    {editable ? (hasChanged ? "Update" : "Cancel") : "Edit"}
+                                    {!editable && (
+                                        <>
+                                            <Pencil className="w-4 h-4 mr-2" />
+                                            Edit
+                                        </>
+                                    )}
+                                    {editable && hasChanged && (
+                                        <>
+                                            <Check className="w-4 h-4 mr-2" />
+                                            Update
+                                        </>
+                                    )}
+                                    {editable && !hasChanged && (
+                                        <>
+                                            <X className="w-4 h-4 mr-2" />
+                                            Cancel
+                                        </>
+                                    )}
                                 </Button>
                             </div>
                         </div>
@@ -213,10 +296,10 @@ const ProfileDialog = () => {
                     </DialogHeader>
 
                     <div className="text-sm space-y-1">
-                        <p><strong>Name:</strong> {formData.fullName}</p>
-                        <p><strong>Email:</strong> {formData.email}</p>
-                        <p><strong>Phone:</strong> {formData.phone}</p>
-                        <p><strong>Role:</strong> {formData.role}</p>
+                        <p><strong>Name:</strong> {watchFields.fullName}</p>
+                        <p><strong>Email:</strong> {watchFields.email}</p>
+                        <p><strong>Phone:</strong> {watchFields.phone}</p>
+                        <p><strong>Role:</strong> {watchFields.role}</p>
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4">

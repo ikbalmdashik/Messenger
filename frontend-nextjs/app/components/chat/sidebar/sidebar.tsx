@@ -46,8 +46,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelect }) => {
                 )}
             </AnimatePresence>
 
-
-
             <div className="border border-black/30 dark:border-white/20 rounded md:h-[98vh] h-[100vh] md:w-1/4 w-full relative md:top-[1vh] md:left-[1vh] ">
                 <div className="border-b border-black/30 dark:border-white/20 sticky top-0 z-50">
                     <h1 className="text-3xl font-bold m-2 italic">Chat</h1>

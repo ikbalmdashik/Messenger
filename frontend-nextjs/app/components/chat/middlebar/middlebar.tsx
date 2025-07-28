@@ -7,11 +7,11 @@ import { User } from "@/app/hooks/user/useAllUsers";
 import useCurrentUser, { initialUser } from "@/app/hooks/user/useCurrentUser";
 import API_ENDPOINTS from "@/app/routes/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@radix-ui/react-scroll-area";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCheck, MessageCircle, Send } from "lucide-react";
+import { CheckCheck, Edit2, MessageCircle, Send, Trash2, UserPlus } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 
@@ -75,13 +75,27 @@ const Middlebar = ({
     if (receiverData.userId == null) {
         return (
             <>
-                <h1 className="text-center">Select an user to begin chat.</h1>
+                {/* <h1 className="text-center">Select an user to begin chat.</h1> */}
+
+                <div className="flex items-center justify-center h-full px-4">
+                    <Card className="w-full max-w-md text-center bg-transparent border border-black/30 dark:border-white/20 shadow-md">
+                        <CardHeader className="flex flex-col items-center gap-2">
+                            <UserPlus className="w-10 h-10 text-muted-foreground" />
+                            <CardTitle className="text-lg text-black dark:text-white">No Conversation Selected</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-muted-foreground">
+                                Select a user from the sidebar to begin chatting.
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
             </>
         );
     } else {
         return (
             <>
-                <div className="relative h-[98vh] overflow-auto">
+                <div className="relative h-[98vh] overflow-auto rounded">
                     {/* Scrollable chat area */}
                     <div className="absolute inset-0 overflow-y-auto pt-12 pb-16 px-2 space-y-2">
                         {chats.length > 0 ? (
@@ -100,9 +114,9 @@ const Middlebar = ({
                                             }`}
                                     >
                                         <Card
-                                            className={`relative px-4 py-2 rounded-lg max-w-[80%] border-none whitespace-pre-wrap break-words shadow-md ${chat.senderId === senderId
-                                                    ? "bg-sky-300/50"
-                                                    : "bg-white/20"
+                                            className={`relative group px-4 py-2 rounded-lg max-w-[80%] border-none whitespace-pre-wrap break-words shadow-md ${chat.senderId === senderId
+                                                ? "bg-sky-300/50"
+                                                : "bg-white/20"
                                                 }`}
                                         >
                                             <p>{chat.message}</p>
@@ -117,7 +131,28 @@ const Middlebar = ({
                                                     />
                                                 )}
                                             </div>
+
+                                            {/* Tooltip */}
+                                            <div
+                                                className="absolute top-1/2 -translate-y-1/2 right-full mr-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-30"
+                                            >
+                                                <div className="flex flex-col bg-zinc-900 text-xs dark:text-white text-black rounded-md shadow-md overflow-hidden border border-black/10 dark:border-white/10">
+                                                    <button
+                                                        className="px-3 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
+                                                    >
+                                                        <Edit2 className="w-3 h-3" />
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        className="px-3 py-1 hover:bg-red-100 dark:hover:bg-red-900 text-red-500 flex items-center gap-1"
+                                                    >
+                                                        <Trash2 className="w-3 h-3" />
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </Card>
+
                                     </div>
                                 </div>
                             ))
@@ -152,7 +187,7 @@ const Middlebar = ({
                             onClick={SendMessageButton}
                             disabled={!message.trim()}
                             aria-label="Send message"
-                            className={`md:w-[10%] w-[20%] border border-black/30 dark:border-white/20 py-2 rounded duration-300 ${message?.trim() ? "bg-blue-700 text-white" : "bg-transparent text-gray-500"}`}
+                            className={`md:w-[10%] w-[20%] border border-black/30 dark:border-white/20 py-2 rounded duration-300 ${message?.trim() ? "bg-blue-700 text-gray-900" : "bg-transparent text-gray-500"}`}
                         >
                             <Send className="h-5 w-5" />
                         </Button>

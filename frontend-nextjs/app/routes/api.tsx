@@ -12,6 +12,8 @@ const API_ENDPOINTS = {
     // User related endpoints
     GetAllUsers: defaultURL + "/auth/getAllUsers",
     GetUserById: defaultURL + "/auth/getUser/",
+    UpdateUser: defaultURL + "/auth/updateUser",
+    DeleteUser: defaultURL + "/auth/deleteUser",
 
     // Chat related endpoints
     CreateChat: defaultURL + "/chat/createChat",
