@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import Middlebar from "./middlebar/middlebar";
 import ChatSidebar from "./sidebar/sidebar";
 import { useEffect, useState } from "react";
+import { ChevronLeft } from "lucide-react";
 
 const ChatComponent = () => {
     const [userId, setUserId] = useState<number>(0);
@@ -33,7 +34,7 @@ const ChatComponent = () => {
                             }}
                             animate={{
                                 opacity: 1,
-                                background: "#030712"
+                                background: "#000000ff"
                             }}
                             exit={{
                                 opacity: 0,
@@ -48,7 +49,7 @@ const ChatComponent = () => {
                                     setIsmiddlebarShow(false);
                                 }}
                             >
-                                Back
+                                <ChevronLeft className="w-6 h-6 mr-1" />
                             </button>
                         </motion.div>
                     )

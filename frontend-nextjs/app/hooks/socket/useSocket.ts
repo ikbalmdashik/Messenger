@@ -5,7 +5,7 @@ import { CreateChat } from '../chat/useCreateChat';
 
 let socket: Socket;
 
-export const useSocket = (url: string, roomId: string) => {
+export const useSocket = (url: any, roomId: {senderId: number | null, receiverId: number | null}) => {
   const [messages, setMessages] = useState<Chat[]>([]);
 
   useEffect(() => {

@@ -1,103 +1,227 @@
 "use client"
 
-import API_ENDPOINTS from "@/app/routes/api";
-import Routes from "@/app/routes/routes";
-import axios from "axios";
-import { useRouter } from "next/navigation";
-import React from "react";
-import { useForm } from 'react-hook-form';
+import API_ENDPOINTS from "@/app/routes/api"
+import Routes from "@/app/routes/routes"
+import axios from "axios"
+import { useRouter } from "next/navigation"
+import { useState } from "react"
+import { useForm } from "react-hook-form"
+import {
+    Card,
+    CardHeader,
+    CardTitle,
+    CardContent,
+    CardFooter,
+} from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { Mail, Lock, ArrowRight, ArrowLeft } from "lucide-react"
 
 type FormData = {
-    email: string;
-    password: string;
-};
+    email: string
+    password: string
+}
 
-const LoginComponent: React.FC = () => {
-    const Router = useRouter();
-    const { register, handleSubmit, formState: { errors } } = useForm<FormData>();
+const MultiStepLogin = () => {
+    const router = useRouter()
+    const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
+    const [email, setEmail] = useState("")
+    const {
+        register,
+        handleSubmit,
+        formState: { errors },
+        getValues,
+        trigger,
+    } = useForm<FormData>({mode: "onChange"})
 
     const AuthLogin = async (email: string, password: string) => {
         try {
-            return await axios.post(API_ENDPOINTS.LoginAuth, {
-                email: email,
-                password: password
-            });
+            return await axios.post(API_ENDPOINTS.LoginAuth, { email, password })
         } catch (error) {
-            console.log(error);
+            console.log(error)
+        }
+    }
+
+    const handleEmailStep = async () => {
+        const valid = await trigger("email")
+        const inputEmail = getValues("email")
+
+        if (!valid) return
+
+        setEmail(inputEmail)
+
+        if (inputEmail === "e@g.c") {
+            setStep(3) // go to password input
+        } else {
+            setStep(2) // show email not found
         }
     }
 
     const onSubmit = async (data: FormData) => {
-        const result = await AuthLogin(data.email, data.password);
-        if (result?.data.userId != null) {
-            sessionStorage.setItem("loginId", `${result.data.userId}`);
-            Router.push(Routes.Chat);
+        const result = await AuthLogin(data.email, data.password)
+        if (result?.data?.userId != null) {
+            sessionStorage.setItem("loginId", `${result.data.userId}`)
+            router.push(Routes.Chat)
         } else {
-            alert(result?.data.message);
+            // Move to step 4 on wrong password
+            setStep(4)
         }
-    };
+    }
+
 
     return (
-        <>
-            <div className="flex items-center justify-center min-h-screen">
-                <form
-                    onSubmit={handleSubmit(onSubmit)}
-                    className="border dark:border-white/20 border-black/30 rounded shadow-md w-full max-w-md"
-                >
-                    <div className="w-md grid grid-cols-9 border-b dark:border-white/20 border-black/30 mb-8">
-                        <div className='w-10 h-10 col-span-1 absolute  rounded overflow-hidden'>
-                            {/* <BackButton /> */}
-                        </div>
-                        <h2 className="col-span-8 text-2xl font-bold text-center py-2">Log In</h2>
-                    </div>
-                    <div className="mb-4 mx-8">
-                        <label className="block mb-2 text-sm font-medium">Email</label>
-                        <input
-                            type="text"
-                            placeholder="example@company.com"
-                            {...register('email', {
-                                required: 'Email is required',
-                                pattern: { value: /\S+@\S+\.\S+/, message: 'Email is required in valid formate' }
-                            })}
-                            className={`bg-transparent h-10 outline outline-2 dark:outline-white/20 outline-black/30 duration-300 focus:outline-4 p-2 mb-1 w-full rounded ${errors.email ? 'outline-pink-700' : 'outline-white/20'}`}
-                        />
-                        {errors.email && <p className="text-pink-700 font-semibold text-sm">{errors.email.message}</p>}
-                    </div>
-                    <div className="mb-4 mx-8">
-                        <label className="block mb-2 text-sm font-medium">Password</label>
-                        <input
-                            type="password"
-                            placeholder="•••••••"
-                            {...register('password', {
-                                required: 'Password is required',
-                                // pattern: { value: /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*()_+])[0-9a-zA-Z!@#$%^&*()_+]{8,}$/, message: "Password is required in valid formate" }
-                            })}
-                            className={`tracking-[5px] text-2xl h-10 bg-transparent outline outline-2 dark:outline-white/20 outline-black/30 duration-300 focus:outline-4 p-2 mb-1 w-full rounded ${errors.password ? 'outline-pink-700' : 'outline-white/20'}`}
-                        />
-                        {errors.password && <p className="text-pink-700 font-semibold text-sm">{errors.password.message}</p>}
-                    </div>
-                    <button
-                        type="submit"
-                        className="flex justify-center items-center gap-2 mx-8 w-[86%] bg-blue-500 text-white p-2 mb-2 rounded-md hover:bg-blue-600 transition"
-                    >
-                        Log In
-                    </button>
-                    <div className="flex items-center justify-center">
-                        <hr className="flex-grow border-gray-500" />
-                        <span className="mx-2 text-gray-500">Or</span>
-                        <hr className="flex-grow border-gray-500" />
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => { Router.push(Routes.Register) }}
-                        className="mx-8 mb-6 w-[86%] border dark:border-white/20 border-black/30 p-2 mt-2 rounded duration-300 dark:hover:bg-white/10 hover:bg-black/30"
-                    >
-                        Register
-                    </button>
-                </form>
-            </div>
-        </>
-    );
+        <div className="flex items-center justify-center min-h-screen px-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="w-full max-w-md">
+                <Card className="bg-transparent border border-black/30 dark:border-white/20 shadow-md dark:text-white text-black">
+                    <CardHeader className="relative">
+                        {step === 1 && (
+                            <CardTitle className="text-center text-2xl">Enter your Email</CardTitle>
+                        )}
+                        {step === 2 && (
+                            <>
+                                <CardTitle className="text-center text-2xl text-red-600">Email Not Found</CardTitle>
+                                <Button
+                                    variant="ghost"
+                                    type="button"
+                                    onClick={() => setStep(1)}
+                                    className="absolute left-2 top-2 text-muted-foreground"
+                                >
+                                    <ArrowLeft className="w-4 h-4 mr-1" /> Back
+                                </Button>
+                            </>
+
+                        )}
+                        {step === 3 && (
+                            <>
+                                <CardTitle className="text-center text-2xl">Enter your Password</CardTitle>
+                                <Button
+                                    variant="ghost"
+                                    type="button"
+                                    onClick={() => setStep(1)}
+                                    className="absolute left-2 top-2 text-muted-foreground"
+                                >
+                                    <ArrowLeft className="w-4 h-4 mr-1" /> Back
+                                </Button>
+                            </>
+                        )}
+                        {step === 4 && (
+                            <>
+                                <CardTitle className="text-center text-2xl text-red-600">
+                                    Password Incorrect
+                                </CardTitle>
+                                <Button
+                                    variant="ghost"
+                                    type="button"
+                                    onClick={() => setStep(3)}
+                                    className="absolute left-2 top-2 text-muted-foreground"
+                                >
+                                    <ArrowLeft className="w-4 h-4 mr-1" /> Back
+                                </Button>
+                            </>
+                        )}
+
+                    </CardHeader>
+
+                    <CardContent className="space-y-4">
+                        {step === 1 && (
+                            <div>
+                                <Label htmlFor="email">Email</Label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
+                                    <Input
+                                        id="email"
+                                        type="text"
+                                        placeholder="example@company.com"
+                                        className="pl-10 border-black/30 dark:border-white/20"
+                                        {...register("email", {
+                                            required: "Email is required",
+                                            pattern: {
+                                                value: /\S+@\S+\.\S+/,
+                                                message: "Enter a valid email",
+                                            },
+                                        })}
+                                    />
+                                </div>
+                                {errors.email && (
+                                    <p className="text-sm text-pink-700 mt-1">{errors.email.message}</p>
+                                )}
+                            </div>
+                        )}
+
+                        {step === 2 && (
+                            <div className="text-center space-y-4">
+                                <p className="text-sm text-muted-foreground">We couldn't find that email.</p>
+                                <Button
+                                    type="button"
+                                    variant="default"
+                                    onClick={() => router.push(Routes.Register)}
+                                >
+                                    Go to Register
+                                </Button>
+                            </div>
+                        )}
+
+                        {step === 3 && (
+                            <div>
+                                <Label htmlFor="password">Password</Label>
+                                <div className="relative">
+                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
+                                    <Input
+                                        id="password"
+                                        type="password"
+                                        placeholder="•••••••"
+                                        className="tracking-[5px] text-2xl pl-10 border-black/30 dark:border-white/20"
+                                        {...register("password", {
+                                            required: "Password is required",
+                                        })}
+                                    />
+                                </div>
+                                {errors.password && (
+                                    <p className="text-sm text-pink-700 mt-1">{errors.password.message}</p>
+                                )}
+                            </div>
+                        )}
+                        {step === 4 && (
+                            <div className="text-center space-y-4">
+                                <p className="text-sm text-red-600">Wrong password.</p>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        router.push("/recover-password") // change to your actual recovery route
+                                    }}
+                                >
+                                    Recover Password
+                                </Button>
+                            </div>
+                        )}
+
+                    </CardContent>
+
+                    <CardFooter className="flex flex-col gap-4">
+                        {step === 1 && (
+                            <Button
+                                type="button"
+                                className="w-full flex justify-between"
+                                onClick={handleEmailStep}
+                            >
+                                Continue
+                                <ArrowRight className="w-4 h-4" />
+                            </Button>
+                        )}
+
+                        {step === 3 && (
+                            <>
+                                <Button type="submit" className="w-full">
+                                    Log In
+                                </Button>
+                            </>
+                        )}
+                    </CardFooter>
+                </Card>
+            </form>
+        </div>
+    )
 }
 
-export default LoginComponent;
+export default MultiStepLogin
