@@ -11,6 +11,11 @@ export class AuthController {
     return await this.authService.CreateUser(createUserDto);
   }
 
+  @Post("/isEmailExist")
+  async isEmialExist(@Body() email: {email: string}) {
+    return await this.authService.IsEmailExist(email.email);
+  }
+
   @Post("/loginAuth")
   async validateUser(@Body() loginDto: LoginDto ) {
     return await this.authService.validateUser(loginDto);

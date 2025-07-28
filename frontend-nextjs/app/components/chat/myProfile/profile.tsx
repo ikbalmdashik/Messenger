@@ -86,6 +86,10 @@ const ProfileDialog = () => {
         setOpen(false);
     };
 
+    const myProfileClick = async () => {
+
+    }
+
     return (
         <>
             <Dialog open={open} onOpenChange={(o) => setOpen(o)}>
@@ -93,6 +97,7 @@ const ProfileDialog = () => {
                     <Button
                         variant="outline"
                         className="flex items-center gap-2 border border-black/30 dark:border-white/20"
+                        onClick={myProfileClick}
                     >
                         <User className="w-4 h-4" />
                         My Profile

@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect } from "react";
-import Chat from "./pages/chat/page";
 import { useRouter } from "next/navigation";
 import Routes from "./routes/routes";
+import { AuthStepSkeleton } from "./components/auth/sleleton/authSkeleton";
 
 export default function Home() {
   const Router = useRouter();
@@ -13,8 +13,9 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="">
-      {/* <Chat /> */}
-    </div>
+    <>
+      <AuthStepSkeleton step={1} />
+    </>
+
   );
 }
