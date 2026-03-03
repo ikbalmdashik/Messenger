@@ -1,201 +1,195 @@
-"use client"
+"use client";
 
-import useChats, { Chat, initialChat } from "@/app/hooks/chat/useChats";
-import { CreateChat } from "@/app/hooks/chat/useCreateChat";
-import { useSocket } from "@/app/hooks/socket/useSocket";
-import { User } from "@/app/hooks/user/useAllUsers";
-import useCurrentUser, { initialUser } from "@/app/hooks/user/useCurrentUser";
+import useChats, { Chat } from "@/app/hooks/chat/useChats";
+import useCurrentUser from "@/app/hooks/user/useCurrentUser";
 import API_ENDPOINTS from "@/app/routes/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { IoChevronBackOutline, IoSend } from "react-icons/io5";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@radix-ui/react-scroll-area";
-import { AnimatePresence, motion } from "framer-motion";
-import { CheckCheck, Edit2, MessageCircle, Send, Trash2, UserPlus } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import { Check, CheckCheck, Send, SendIcon } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import { motion, AnimatePresence } from "framer-motion";
 
 const Middlebar = ({
-    senderId,
-    receiverId
-}: Readonly<{
-    senderId: number | null,
-    receiverId: number | null
-}>
-) => {
-    const getReceiverData: User | null = useCurrentUser(Number(receiverId));
-    const [receiverData, setReceiverData] = useState<User>(initialUser);
+  senderId,
+  receiverId,
+  onBack,
+}: {
+  senderId: number | null;
+  receiverId: number | null;
+  onBack?: () => void;
+}) => {
+  const receiver = useCurrentUser(Number(receiverId));
+  const chatsData = useChats(Number(senderId), Number(receiverId));
 
-    const getChats: Chat[] | null = useChats(Number(senderId), Number(receiverId));
-    const [chats, setChats] = useState<Chat[]>(getChats);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [message, setMessage] = useState("");
 
-    const [message, setMessage] = useState<string>("");
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-    const createChat: CreateChat = {
-        senderId: senderId,
-        receiverId: receiverId,
-        message: message,
-        status: "sent"
-    };
+  // Load chats
+  useEffect(() => {
+    if (chatsData) setChats(chatsData);
+  }, [chatsData]);
 
-    useEffect(() => {
-        setReceiverData(getReceiverData);
-        setChats(getChats);
-    }, [getChats, getReceiverData]);
+  // Socket connection
+  useEffect(() => {
+    const socket = io(API_ENDPOINTS.DefaultURL);
 
-    useEffect(() => {
-        const socket = io(API_ENDPOINTS.DefaultURL);
+    socket.emit("join_room", { senderId, receiverId });
 
-        // Join a specific room
-        const room = { senderId, receiverId };
+    socket.on("receive_message", (msg: Chat) => {
+      setChats((prev) => [...prev, msg]);
+    });
 
-        // useSocket(API_ENDPOINTS.DefaultURL, room);
+    return () => { socket.disconnect() };
+  }, [senderId, receiverId]);
 
-        socket.emit('join_room', room);
+  // Auto scroll
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chats]);
 
-        socket.on('receive_message', (newMessage: any) => {
-            setChats((prevMessages) => [...prevMessages, newMessage]);
-            // console.log(newMessage);
-        });
+  const sendMessage = () => {
+    if (!message.trim()) return;
 
-        return () => {
-            socket.close();
-        }
+    const socket = io(API_ENDPOINTS.DefaultURL);
 
-    }, [getReceiverData]);
+    socket.emit("send_message", {
+      senderId,
+      receiverId,
+      message,
+      status: "sent",
+      createdAt: new Date(),
+    });
 
-    const SendMessageButton = async () => {
-        const socket = io(API_ENDPOINTS.DefaultURL);
-        socket.emit('send_message', createChat);
+    setMessage("");
+  };
 
-        setMessage('');
-    }
+  const StatusIcon = ({ status }: { status: string }) => {
+    if (status === "seen") return <CheckCheck size={14} className="text-blue-500" />;
+    if (status === "delivered") return <CheckCheck size={14} />;
+    return <Check size={14} />;
+  };
 
+  if (!receiver?.userId) {
+    return (
+      <div className="h-full flex items-center justify-center text-muted-foreground">
+        Select a user to start chatting
+      </div>
+    );
+  }
 
-    if (receiverData.userId == null) {
-        return (
-            <>
-                {/* <h1 className="text-center">Select an user to begin chat.</h1> */}
+  return (
+    <div className="flex flex-col h-full w-full backdrop-blur-xl bg-white/10 dark:bg-black/20 border-l border-white/20 overflow-hidden">
 
-                <div className="flex items-center justify-center h-full px-4">
-                    <Card className="w-full max-w-md text-center bg-transparent border border-black/30 dark:border-white/20 shadow-md">
-                        <CardHeader className="flex flex-col items-center gap-2">
-                            <UserPlus className="w-10 h-10 text-muted-foreground" />
-                            <CardTitle className="text-lg text-black dark:text-white">No Conversation Selected</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-muted-foreground">
-                                Select a user from the sidebar to begin chatting.
-                            </p>
-                        </CardContent>
-                    </Card>
+      {/* Header */}
+      <div className="h-14 flex items-center px-4 gap-3 border-b border-white/20 backdrop-blur-xl bg-white/10">
+        {onBack && (
+          <button onClick={onBack} className="md:hidden text-sm">
+            <IoChevronBackOutline size={30} />
+          </button>
+        )}
+        <div>
+          <p className="font-semibold">{receiver.fullName}</p>
+          <p className="text-xs opacity-60">{receiver.role}</p>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <AnimatePresence>
+          {chats.map((chat) => {
+            const isMine = chat.senderId === senderId;
+
+            return (
+              <motion.div
+                key={chat.chatId}
+                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex w-full"
+              >
+                <div className="flex flex-col w-full items-center gap-1">
+                  {/* Date above bubble, centered */}
+                  <div className="text-[11px] text-white/60 mb-1">
+                    {chat.createdAt?.split(" - ")[0]}
+                  </div>
+
+                  {/* Message bubble wrapper for alignment */}
+                  <div
+                    className={`flex w-full ${isMine ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`
+                          max-w-[75%] px-4 py-2 rounded-2xl
+                          break-words whitespace-pre-wrap
+                          backdrop-blur-xl border shadow-lg
+                          ${isMine
+                          ? "bg-blue-500/20 border-blue-400/30 text-white"
+                          : "bg-white/10 border-white/20 text-white"
+                        }
+                      `}
+                    >
+                      <p className="text-sm">{chat.message}</p>
+                    </div>
+                  </div>
+
+                  {/* Status with tick + time */}
+                  {isMine && (
+                    <div className="flex w-full justify-end items-center gap-1 text-[11px] text-white/60 mt-1">
+                      <StatusIcon status="Seen" />
+                      <span>{chat.createdAt?.split(" - ")[1]}</span>
+                    </div>
+                  )}
                 </div>
-            </>
-        );
-    } else {
-        return (
-            <>
-                <div className="relative h-[98vh] overflow-auto rounded">
-                    {/* Scrollable chat area */}
-                    <div className="absolute inset-0 overflow-y-auto pt-12 pb-16 px-2 space-y-2">
-                        {chats.length > 0 ? (
-                            chats.map((chat: Chat) => (
-                                <div key={chat.chatId} className="flex flex-col gap-1 relative">
-                                    {/* Timestamp as sticky header */}
-                                    <div className="sticky top-2 z-10 flex justify-center">
-                                        <span className="text-xs px-2 py-1 rounded-md text-muted-foreground backdrop-blur shadow-sm">
-                                            {chat.createdAt}
-                                        </span>
-                                    </div>
+              </motion.div>
 
-                                    {/* Message bubble */}
-                                    <div
-                                        className={`flex ${chat.senderId === senderId ? "justify-end" : "justify-start"
-                                            }`}
-                                    >
-                                        <Card
-                                            className={`relative group px-4 py-2 rounded-lg max-w-[80%] border-none whitespace-pre-wrap break-words shadow-md ${chat.senderId === senderId
-                                                ? "bg-sky-300/50"
-                                                : "bg-white/20"
-                                                }`}
-                                        >
-                                            <p>{chat.message}</p>
+            );
+          })}
+        </AnimatePresence>
+        <div ref={bottomRef} />
+      </div>
 
-                                            {/* Status and icon */}
-                                            <div className="flex items-center justify-between mt-1 text-xs opacity-70 gap-2">
-                                                <span>{chat.status}</span>
-                                                {chat.status === "sent" && (
-                                                    <CheckCheck
-                                                        size={14}
-                                                        className={chat.senderId === senderId ? "text-white" : "text-muted-foreground"}
-                                                    />
-                                                )}
-                                            </div>
+      <div className="h-16 flex items-center px-3 border-t border-white/20 backdrop-blur-xl bg-white/10">
+        <div className="relative w-full">
+          {/* Input */}
+          <Input
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="pr-12 h-10 bg-transparent border-white/20 focus-visible:ring-0"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+          />
 
-                                            {/* Tooltip */}
-                                            <div
-                                                className="absolute top-1/2 -translate-y-1/2 right-full mr-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-30"
-                                            >
-                                                <div className="flex flex-col bg-zinc-900 text-xs dark:text-white text-black rounded-md shadow-md overflow-hidden border border-black/10 dark:border-white/10">
-                                                    <button
-                                                        className="px-3 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1"
-                                                    >
-                                                        <Edit2 className="w-3 h-3" />
-                                                        Edit
-                                                    </button>
-                                                    <button
-                                                        className="px-3 py-1 hover:bg-red-100 dark:hover:bg-red-900 text-red-500 flex items-center gap-1"
-                                                    >
-                                                        <Trash2 className="w-3 h-3" />
-                                                        Delete
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </Card>
+          {/* Send Button Inside */}
+          <button
+            onClick={sendMessage}
+            disabled={message.trim().length === 0}
+            className={`
+                absolute right-1 top-1/2 -translate-y-1/2 bg-transparent
+                h-8 w-8 flex items-center justify-center
+                rounded-sm transition-all duration-200
+                ${message.trim().length === 0
+                ? "bg-transparent text-white/40 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+              }
+      `}
+          >
+            <IoSend size={20} />
+          </button>
+        </div>
+      </div>
 
-                                    </div>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-sm text-muted-foreground">
-                                <MessageCircle className="mb-2 h-6 w-6 opacity-40" />
-                                <p>No messages yet</p>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Header overlay */}
-                    <div className="absolute top-0 left-0 right-0 h-12 z-50 backdrop-blur-lg bg-white/10 dark:bg-black/10 border-b border-black/30 dark:border-white/20 flex items-center px-4">
-                        <div className="leading-tight cursor-pointer duration-300 hover:bg-white/40 rounded px-2 py-1 absolute md:left-4 left-16">
-                            <p className="text-center">{receiverData.fullName}</p>
-                            <p className="text-sm text-center">{receiverData.role}</p>
-                        </div>
-                    </div>
-
-                    {/* Footer overlay */}
-                    <div className="absolute bottom-0 left-0 right-0 z-50 backdrop-blur bg-white/10 dark:bg-black/10 border-t border-black/30 dark:border-white/20 py-2 px-3 flex flex-row items-center gap-2">
-                        {/* Input & Send */}
-                        <Input
-                            type="text"
-                            value={message || ''}
-                            onChange={(e) => setMessage(e.target.value)}
-                            placeholder="Message..."
-                            className="md:w-[90%] w-[80%] border border-black/30 dark:border-white/20"
-
-                        />
-                        <Button
-                            onClick={SendMessageButton}
-                            disabled={!message.trim()}
-                            aria-label="Send message"
-                            className={`md:w-[10%] w-[20%] border border-black/30 dark:border-white/20 py-2 rounded duration-300 ${message?.trim() ? "bg-blue-700 text-gray-900" : "bg-transparent text-gray-500"}`}
-                        >
-                            <Send className="h-5 w-5" />
-                        </Button>
-                    </div>
-                </div>
-            </>
-        );
-    }
-}
+    </div>
+  );
+};
 
 export default Middlebar;

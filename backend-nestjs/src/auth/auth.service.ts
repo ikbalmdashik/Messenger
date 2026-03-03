@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateUserDto, LoginDto } from './dto/create-auth.dto';
 import { JwtService } from '@nestjs/jwt';
-import { UsersEntity } from './entities/auth.entity';
+import { AuthTokenEntity, UsersEntity } from './entities/auth.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from "bcrypt";
@@ -15,7 +15,10 @@ export class AuthService {
 
     @InjectRepository(ChatMessageEntity)
     private chatRepository: Repository<ChatMessageEntity>,
-    
+
+    @InjectRepository(AuthTokenEntity)
+    private auth_repo: Repository<AuthTokenEntity>,
+
     private jwtService: JwtService
   ) { };
 
@@ -68,6 +71,95 @@ export class AuthService {
     }
   }
 
+  async validateTokenAndProcess(token: string) {
+    const record = await this.auth_repo.findOne({
+      where: { token },
+    });
+
+    if (!record) {
+      throw new BadRequestException('Invalid token');
+    }
+
+    // Check expiration
+    if (record.expiresAt < new Date()) {
+      throw new BadRequestException('Token expired');
+    }
+
+    // Load user
+    const user = await this.userRepository.findOne({
+      where: { userId: record.userId },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    // If token is for email verification
+    if (record.type === 'VERIFY_EMAIL') {
+      user.isEmailVerified = true;
+      await this.userRepository.save(user);
+
+      // optionally delete token after use
+      // await this.auth_repo.delete({ id: record.id });
+
+      return {
+        success: true,
+        action: 'EMAIL_VERIFIED',
+        message: 'Email successfully verified',
+        email: user.email,
+      };
+    }
+
+    // If token is for password reset
+    if (record.type === 'RESET_PASSWORD') {
+      return {
+        success: true,
+        action: 'RESET_PASSWORD_ALLOWED',
+        message: 'Token valid. You can reset password now.',
+        token: token, // frontend will reuse this
+        userId: user.userId,
+        email: user.email,
+      };
+    }
+  }
+
+  async change_password(token: string, newPassword: string) {
+    // 1️ Find token in DB
+    const resetToken = await this.auth_repo.findOne({
+      where: { token },
+    });
+
+    if (!resetToken) {
+      throw new BadRequestException('Invalid token.');
+    }
+
+    // 2️ Check expiry
+    if (resetToken.expiresAt < new Date()) {
+      throw new BadRequestException('Token expired.');
+    }
+
+    // 3️ Get the user
+    const user = await this.userRepository.findOne({
+      where: { userId: resetToken.userId },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found.');
+    }
+
+    // 4️ Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // 5️ Update password
+    user.password = hashedPassword;
+    await this.userRepository.save(user);
+
+    // 6️ Invalidate token (delete or mark as used)
+    await this.auth_repo.delete({ id: resetToken.id });
+
+    return { success: true };
+  }
+
   // get data by id
   async GetDataById(id: number) {
     const result = await this.userRepository.createQueryBuilder('user')
@@ -76,7 +168,8 @@ export class AuthService {
         'user.fullName',
         'user.phone',
         'user.email',
-        'user.role'
+        'user.role',
+        'user.isEmailVerified'
       ])
       .where('user.userId = :id', { id })
       .getOne();

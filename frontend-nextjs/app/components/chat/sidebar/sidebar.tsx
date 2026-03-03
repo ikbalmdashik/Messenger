@@ -1,90 +1,76 @@
-"use client"
+"use client";
 
 import useAllUsers, { User } from "@/app/hooks/user/useAllUsers";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useState } from "react";
-import Profile from "../myProfile/profile";
 import ProfileDialog from "../myProfile/profile";
+import { Button } from "@/components/ui/button";
 
 type ChatSidebarProps = {
-    onSelect: (senderId: number | null, receiverId: number | null) => void;
-}
+  onSelect: (senderId: number | null, receiverId: number | null) => void;
+};
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelect }) => {
-    const [userId, setUserId] = useState<number | null>(null);
-    const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-    const [showProfile, setShowProfile] = useState<boolean>(false);
+  const [userId, setUserId] = useState<number | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [showProfile, setShowProfile] = useState<boolean>(false);
 
-    const allUsers: User[] = useAllUsers();
+  const allUsers: User[] = useAllUsers();
 
-    useEffect(() => {
-        setUserId(Number(sessionStorage.getItem("loginId")));
-    }, [userId]);
+  useEffect(() => {
+    setUserId(Number(sessionStorage.getItem("loginId")));
+  }, []);
 
-    // Function to handle selecting a user
-    const handleSelectUser = (id: number | null) => {
-        setSelectedUserId(id); // Update the selected userId state
-    };
+  return (
+    <>
+      {/* Sidebar */}
+      {/* <div className="h-full w-full bg-white dark:bg-slate-900 border-r flex flex-col"> */}
+      <div className="
+            h-full w-full
+            backdrop-blur-xl
+            bg-white/10 dark:bg-black/20
+            border-r border-white/20
+            flex flex-col
+            ">
+        {/* Header */}
+        <div className="px-4 py-4 border-b flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Chat</h1>
+          {/* <button onClick={() => setShowProfile(true)}>Profile</button> */}
+          <ProfileDialog />
+        </div>
 
-    return (
-        <>
-            <AnimatePresence>
-                {showProfile && (
-                    <>
-                        {/* Blurred backdrop */}
-                        <motion.div
-                            className="fixed inset-0 bg-black/30 backdrop-blur z-40"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => setShowProfile(false)}
-                        >
-                            <Profile />
-                        </motion.div>
+        {/* User List */}
+        <div className="flex-1 overflow-y-auto py-2">
+          {allUsers.map((user: User) => {
+            const isSelected = selectedUserId === user.userId;
 
-                    </>
-                )}
-            </AnimatePresence>
+            return (
+              <motion.div
+                key={user.userId}
+                onClick={() => {
+                  setSelectedUserId(user.userId);
+                  onSelect(userId, user.userId);
+                }}
+                className={`mx-3 my-2 p-3 rounded-xl cursor-pointer transition-all
+                    ${isSelected
+                    ? "bg-blue-500/20 border border-blue-400/30 backdrop-blur-lg"
+                    : "hover:bg-white/10"
+                    }`}
+              >
+                <p className="font-medium">{user.fullName}</p>
+                <p className="text-xs text-gray-500">{user.email}</p>
+              </motion.div>
+            );
+          })}
+        </div>
 
-            <div className="border border-black/30 dark:border-white/20 rounded md:h-[98vh] h-[100vh] md:w-1/4 w-full relative md:top-[1vh] md:left-[1vh] ">
-                <div className="border-b border-black/30 dark:border-white/20 sticky top-0 z-50">
-                    <h1 className="text-3xl font-bold m-2 italic">Chat</h1>
-                    <div
-                        className="absolute top-[-8px] right-2 p-2"
-                    >
-                        <ProfileDialog />
-                    </div>
-
-                </div>
-                <div className="w-full absolute">
-                    {
-                        allUsers.map((user: User) => (
-                            <label
-                                key={user.userId}
-                                // onClick={() => {handleSelectUser(user.userId)}}
-                                onClick={() => { onSelect(userId, user.userId) }}
-                                className={`m-2 outline outline-1 dark:outline-white/20 outline-black/30 grid col-span-1 cursor-pointer rounded transition duration-300 dark:hover:bg-white/20 hover:bg-black/30 
-                                    ${selectedUserId === user.userId
-                                        ? "bg-black/30 dark:bg-white/20"  // bg-white/20 when selected
-                                        : "bg-transparent"  // default state
-                                    }`}
-                            >
-                                <input
-                                    type="radio"
-                                    value={Number(`${user.userId}`)}
-                                    checked={selectedUserId === user.userId} // Bind radio selection to state
-                                    onChange={() => handleSelectUser(user.userId)} // Handle selection
-                                    // onChange={()=> { onSelect(userId, user.userId) }}
-                                    className="hidden" // Hide the radio input
-                                />
-                                <p className="text-center cursor-pointer py-4">{user.fullName}</p>
-                            </label>
-                        ))
-                    }
-                </div>
-            </div>
-        </>
-    );
-}
+        {/* Footer */}
+        <div className="p-4 border-t">
+          <Button variant={"outline"} className="w-full">+ New Chat</Button>
+        </div>
+      </div>
+    </>
+  );
+};
 
 export default ChatSidebar;

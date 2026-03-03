@@ -1,0 +1,2 @@
+npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:generate src/migrations/AddNewColumn -d src/data-source.ts --pretty
+npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/data-source.ts

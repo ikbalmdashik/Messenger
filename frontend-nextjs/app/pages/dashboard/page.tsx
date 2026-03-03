@@ -1,4 +1,4 @@
-import SendChat from "@/app/components/chat/sendChat";
+// import SendChat from "@/app/components/chat/sendChat";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 const Dashboard = () => {
     return(
         <>
-            <SendChat />
+            {/* <SendChat /> */}
         </>
     );
 }

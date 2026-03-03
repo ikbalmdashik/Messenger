@@ -9,7 +9,7 @@ export default function Home() {
   const Router = useRouter();
 
   useEffect(() => {
-    Router.push(Routes.Login);
+    Router.push(Routes.LandingPage);
   }, []);
 
   return (

@@ -3,12 +3,13 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { UsersEntity } from './entities/auth.entity';
+import { AuthTokenEntity, UsersEntity } from './entities/auth.entity';
 import { ChatMessageEntity } from 'src/chat/entities/chat.entity';
+import { MailService } from 'src/mailer/mail.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ UsersEntity, ChatMessageEntity ]),
+    TypeOrmModule.forFeature([ UsersEntity, ChatMessageEntity, AuthTokenEntity ]),
     JwtModule.register({
       secret: "abc123def", // keep it into .env file
       // signOptions: {
@@ -17,6 +18,6 @@ import { ChatMessageEntity } from 'src/chat/entities/chat.entity';
     })
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [AuthService, MailService],
 })
 export class AuthModule {}

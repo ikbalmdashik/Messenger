@@ -8,6 +8,9 @@ const API_ENDPOINTS = {
     CreateUser: defaultURL + "/auth/createUser",
     IsEmailExist: defaultURL + "/auth/isEmailExist",
     LoginAuth: defaultURL + "/auth/loginAuth",
+    SendLink: defaultURL + "/auth/sendLink",
+    Validate: defaultURL + "/auth/validate",
+    UpdatePassword: defaultURL + "/auth/resetPassword",
     
     // User related endpoints
     GetAllUsers: defaultURL + "/auth/getAllUsers",

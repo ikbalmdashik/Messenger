@@ -171,7 +171,7 @@ const ProfileDialog = () => {
                         onClick={myProfileClick}
                     >
                         <User className="w-4 h-4" />
-                        My Profile
+                        
                     </Button>
                 </DialogTrigger>
 
