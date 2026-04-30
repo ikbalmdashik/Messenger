@@ -1,7 +1,7 @@
 // app/secure-session/PasswordChange.tsx
 'use client'
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import axios from "axios"
@@ -33,6 +33,13 @@ export default function PasswordChange({ token }: PasswordChangeProps) {
     const router = useRouter()
     const [step, setStep] = useState<1 | 2 | 3>(1) // 1: form, 2: success, 3: failed
     const [isLoading, setIsLoading] = useState(false)
+
+    useEffect(() => {
+        if (!token) {
+            alert("Invalid or missing token. Please try again.")
+            router.push(Routes.Login)
+        }
+    }, [token])
 
     const {
         register,

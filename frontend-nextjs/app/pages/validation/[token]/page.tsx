@@ -1,5 +1,6 @@
 "use client";
 
+import TokenExpire from "@/app/components/validation/tokenExpire";
 import API_ENDPOINTS from "@/app/routes/api";
 import Routes from "@/app/routes/routes";
 import { Spinner } from "@/components/ui/spinner";
@@ -13,42 +14,59 @@ interface ValidationProps {
   };
 }
 
+type Status = "loading" | "valid" | "expired" | "notfound";
+
 const Validation = ({ params }: ValidationProps) => {
-  const [tokenData, setTokenData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<Status>("loading");
   const router = useRouter();
 
+  // Fetch token validation
   useEffect(() => {
-    const fe = async () => {
+    const validateToken = async () => {
       try {
         const res = await axios.get(API_ENDPOINTS.Validate, {
           params: { token: params.token },
           withCredentials: true,
         });
 
-        setTokenData(res.data);
+        // Valid token
+        if (res.data?.action === "RESET_PASSWORD_ALLOWED") {
+          setStatus("valid");
+        } else {
+          // Token exists but expired/used
+          setStatus("expired");
+        }
+
       } catch (error: any) {
-        console.log(error.response?.data);
-        setTokenData({ statusCode: error.response?.data.statusCode });
-      } finally {
-        setLoading(false);
+        const code = error?.response?.data?.statusCode;
+
+        if (code === 404) {
+          // Token not found
+          console.log(error?.response?.data);
+          setStatus("notfound");
+        } else {
+          // Any other error → treat as expired
+          setStatus("expired");
+        }
       }
     };
 
-    fe();
+    validateToken();
   }, [params.token]);
 
+  // Handle redirects
   useEffect(() => {
-    if (!loading && tokenData?.statusCode === 200) {
+    if (status === "valid") {
       router.replace(Routes.SecureSession);
     }
-    
-    if (!loading && tokenData?.statusCode === 404) {
+
+    if (status === "notfound") {
       router.replace(Routes.NotFOund);
     }
-  }, [loading, tokenData, router]);
+  }, [status, router]);
 
-  if (loading) {
+  // Loading UI
+  if (status === "loading") {
     return (
       <div className="bg-white dark:bg-slate-950 flex items-center justify-center min-h-screen">
         <Spinner size={50} />
@@ -56,15 +74,13 @@ const Validation = ({ params }: ValidationProps) => {
     );
   }
 
-  if (tokenData?.statusCode !== 200) {
-    return(
-      <div>
-        <h1>Token Expired!</h1>
-      </div>
-    );
+  // Prevent flicker during redirect
+  if (status === "valid" || status === "notfound") {
+    return null;
   }
 
-  return null;
+  // Token expired / used
+  return <TokenExpire />;
 };
 
 export default Validation;

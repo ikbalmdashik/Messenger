@@ -80,8 +80,14 @@ export class AuthService {
       where: { token },
     });
 
+    console.log("Token record:", record); // Debug log
+
     if (!record) {
       throw new NotFoundException('Token Not Found');
+    }
+
+    if (record.used) {
+      throw new BadRequestException('Token already used');
     }
 
     // Check expiration
@@ -105,11 +111,13 @@ export class AuthService {
 
       // optionally delete token after use
       // await this.auth_repo.delete({ id: record.id });
+      await this.auth_repo.update({ id: record.id }, { used: true });
 
       return {
         success: true,
         action: 'EMAIL_VERIFIED',
         message: 'Email successfully verified',
+        isUsed: record.used,
         email: user.email,
       };
     }
@@ -121,6 +129,7 @@ export class AuthService {
         action: 'RESET_PASSWORD_ALLOWED',
         message: 'Token valid. You can reset password now.',
         token: token, // frontend will reuse this
+        isUsed: record.used,
         userId: user.userId,
         email: user.email,
       };
@@ -134,7 +143,11 @@ export class AuthService {
     });
 
     if (!resetToken) {
-      throw new BadRequestException('Invalid token.');
+      throw new NotFoundException('Token not found.');
+    }
+
+    if (resetToken.used) {
+      throw new BadRequestException('Token already used');
     }
 
     // 2️ Check expiry
@@ -159,7 +172,8 @@ export class AuthService {
     await this.userRepository.save(user);
 
     // 6️ Invalidate token (delete or mark as used)
-    await this.auth_repo.delete({ id: resetToken.id });
+    // await this.auth_repo.delete({ id: resetToken.id });
+    await this.auth_repo.update({ id: resetToken.id }, { used: true });
 
     return { success: true };
   }
