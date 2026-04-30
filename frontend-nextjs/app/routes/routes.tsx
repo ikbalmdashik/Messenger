@@ -5,7 +5,8 @@ const Routes = {
     Chat: "/pages/chat",
     Dashboard: "/pages/dashboard",
     Validation: "/pages/validation",
-    SecureSession: "/pages/secure-session"
+    SecureSession: "/pages/secure-session",
+    NotFOund: "/pages/404",
 }
 
 export default Routes;

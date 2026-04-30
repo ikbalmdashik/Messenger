@@ -53,8 +53,12 @@ export class AuthService {
       } else {
         return { message: "Email is already exist!" }
       }
-    } catch (error) {
-      throw new Error(error.message);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        throw new Error(error.message);
+      }
+
+      throw new Error("Unknown error occurred");
     }
   }
 
@@ -77,7 +81,7 @@ export class AuthService {
     });
 
     if (!record) {
-      throw new BadRequestException('Invalid token');
+      throw new NotFoundException('Token Not Found');
     }
 
     // Check expiration
