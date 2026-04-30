@@ -6,7 +6,7 @@ import API_ENDPOINTS from "@/app/routes/api";
 import { Button } from "@/components/ui/button";
 import { IoChevronBackOutline, IoSend } from "react-icons/io5";
 import { Input } from "@/components/ui/input";
-import { Check, CheckCheck, Send, SendIcon } from "lucide-react";
+import { BadgeAlert, BadgeCheck, Check, CheckCheck, Send, SendIcon } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { motion, AnimatePresence } from "framer-motion";
@@ -92,7 +92,16 @@ const Middlebar = ({
           </button>
         )}
         <div>
-          <p className="font-semibold">{receiver.fullName}</p>
+          <h1 className="font-semibold flex items-center gap-1">
+            {receiver.fullName}
+
+            {receiver.isEmailVerified ? (
+              <BadgeCheck className="w-5 h-5 text-green-600 pb-0.5" />
+            ) : (
+              <BadgeAlert className="w-5 h-5 text-rose-500 pb-0.5" />
+            )}
+          </h1>
+
           <p className="text-xs opacity-60">{receiver.role}</p>
         </div>
       </div>
