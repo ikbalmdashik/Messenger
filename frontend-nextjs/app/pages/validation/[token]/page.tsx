@@ -1,12 +1,13 @@
 "use client";
 
+import EmailVerifiedSuccess from "@/app/components/validation/successEmail";
 import TokenExpire from "@/app/components/validation/tokenExpire";
 import API_ENDPOINTS from "@/app/routes/api";
 import Routes from "@/app/routes/routes";
 import { Spinner } from "@/components/ui/spinner";
 import axios from "axios";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface ValidationProps {
   params: {
@@ -14,14 +15,18 @@ interface ValidationProps {
   };
 }
 
-type Status = "loading" | "valid" | "expired" | "notfound";
+type Status = "loading" | "valid1" | "valid2" | "expired" | "notfound";
 
 const Validation = ({ params }: ValidationProps) => {
   const [status, setStatus] = useState<Status>("loading");
   const router = useRouter();
 
-  // Fetch token validation
+  const hasCalled = useRef(false);
+
   useEffect(() => {
+    if (hasCalled.current) return;
+    hasCalled.current = true;
+
     const validateToken = async () => {
       try {
         const res = await axios.get(API_ENDPOINTS.Validate, {
@@ -29,11 +34,15 @@ const Validation = ({ params }: ValidationProps) => {
           withCredentials: true,
         });
 
-        // Valid token
-        if (res.data?.action === "RESET_PASSWORD_ALLOWED") {
-          setStatus("valid");
-        } else {
-          // Token exists but expired/used
+        const action = res.data?.action;
+
+        if (action === "RESET_PASSWORD_ALLOWED") {
+          setStatus("valid1");
+        } 
+        else if (action === "EMAIL_VERIFIED") {
+          setStatus("valid2");
+        } 
+        else {
           setStatus("expired");
         }
 
@@ -41,11 +50,8 @@ const Validation = ({ params }: ValidationProps) => {
         const code = error?.response?.data?.statusCode;
 
         if (code === 404) {
-          // Token not found
-          console.log(error?.response?.data);
           setStatus("notfound");
         } else {
-          // Any other error → treat as expired
           setStatus("expired");
         }
       }
@@ -54,9 +60,8 @@ const Validation = ({ params }: ValidationProps) => {
     validateToken();
   }, [params.token]);
 
-  // Handle redirects
   useEffect(() => {
-    if (status === "valid") {
+    if (status === "valid1") {
       router.replace(Routes.SecureSession);
     }
 
@@ -65,7 +70,6 @@ const Validation = ({ params }: ValidationProps) => {
     }
   }, [status, router]);
 
-  // Loading UI
   if (status === "loading") {
     return (
       <div className="bg-white dark:bg-slate-950 flex items-center justify-center min-h-screen">
@@ -74,12 +78,16 @@ const Validation = ({ params }: ValidationProps) => {
     );
   }
 
-  // Prevent flicker during redirect
-  if (status === "valid" || status === "notfound") {
+  if (status === "valid2") {
+    return (
+      <EmailVerifiedSuccess />
+    );
+  }
+
+  if (status === "valid1" || status === "notfound") {
     return null;
   }
 
-  // Token expired / used
   return <TokenExpire />;
 };
 

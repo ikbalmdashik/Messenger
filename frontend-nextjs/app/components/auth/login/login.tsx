@@ -203,11 +203,12 @@ const MultiStepLogin = () => {
                                         <Input
                                             id="password"
                                             type="password"
-                                            placeholder="•••••••"
+                                            placeholder="●●●●●●●●"
                                             className="tracking-[5px] text-2xl pl-10 border-black/30 dark:border-white/20"
                                             {...register("password", { required: "Password is required" })}
                                         />
                                     </div>
+
                                     {errors.password && <p className="text-sm text-pink-700 mt-0">{errors.password.message}</p>}
                                 </motion.div>
                             )}

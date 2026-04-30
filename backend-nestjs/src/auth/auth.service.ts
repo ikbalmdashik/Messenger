@@ -80,8 +80,6 @@ export class AuthService {
       where: { token },
     });
 
-    console.log("Token record:", record); // Debug log
-
     if (!record) {
       throw new NotFoundException('Token Not Found');
     }
@@ -109,8 +107,6 @@ export class AuthService {
       user.isEmailVerified = true;
       await this.userRepository.save(user);
 
-      // optionally delete token after use
-      // await this.auth_repo.delete({ id: record.id });
       await this.auth_repo.update({ id: record.id }, { used: true });
 
       return {

@@ -8,6 +8,7 @@ export interface User {
     phone: string | null;
     email: string | null;
     role: string | null;
+    isEmailVerified: boolean | null;
 }
 
 const useAllUsers = () => {

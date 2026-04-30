@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import axios from "axios"
+import { Lock, MessageCircle } from "lucide-react"
 import API_ENDPOINTS from "@/app/routes/api"
 import Routes from "@/app/routes/routes"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -85,8 +86,12 @@ export default function PasswordChange({ token }: PasswordChangeProps) {
 
     return (
         <div className="flex items-center justify-center min-h-[100dvh] px-4 bg-white dark:bg-slate-950 transition-colors">
+            
             <form onSubmit={handleSubmit(onSubmit)} className="w-full max-w-md">
-                <Card className="border border-black/30 dark:border-white/20 dark:text-white text-black shadow-md bg-background/60 backdrop-blur-md flex flex-col justify-between">
+                <h1 className="font-bold text-xl md:text-4xl flex justify-center items-center gap-2 bg-gradient-to-r mb-8 from-sky-500 to-indigo-500 bg-clip-text text-transparent">
+                <MessageCircle className="w-8 h-8 text-sky-500" /> Messenger
+            </h1>
+                <Card className="border-none dark:text-white text-black shadow-md dark:bg-white/5 bg-black/5 backdrop-blur-md flex flex-col justify-between">
                     <CardHeader className="text-center">
                         <CardTitle className="text-2xl">
                             {step === 1 && "Change Password"}
@@ -107,27 +112,61 @@ export default function PasswordChange({ token }: PasswordChangeProps) {
                                     exit="hidden"
                                     className="space-y-4"
                                 >
-                                    {renderInput(
-                                        "New Password",
-                                        "••••••••",
-                                        register("password", {
-                                            required: "Password is required",
-                                            minLength: { value: 6, message: "Minimum 6 characters" }
-                                        })
-                                    )}
-                                    {errors.password && <p className="text-pink-600 text-sm mt-0">{errors.password.message}</p>}
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-sm font-medium">New Password</label>
 
-                                    {renderInput(
-                                        "Confirm Password",
-                                        "••••••••",
-                                        register("confirmPassword", {
-                                            required: "Confirm password is required",
-                                            validate: (val) => val === getValues("password") || "Passwords do not match"
-                                        })
-                                    )}
-                                    {errors.confirmPassword && (
-                                        <p className="text-pink-600 text-sm mt-0">{errors.confirmPassword.message}</p>
-                                    )}
+                                        <div className="relative">
+                                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
+
+                                            <Input
+                                                id="password"
+                                                type="text"
+                                                placeholder="•••••••"
+                                                className="text-2xl pl-10 border-black/30 dark:border-white/20 focus:ring-2 focus:ring-black dark:focus:ring-white"
+                                                {...register("password", {
+                                                    required: "Password is required",
+                                                    minLength: {
+                                                        value: 6,
+                                                        message: "Minimum 6 characters",
+                                                    },
+                                                })}
+                                            />
+                                        </div>
+
+                                        {errors.password && (
+                                            <p className="text-pink-600 text-sm">
+                                                {errors.password.message}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {/* Confirm Password */}
+                                    <div className="flex flex-col gap-1 mt-4">
+                                        <label className="text-sm font-medium">Confirm Password</label>
+
+                                        <div className="relative">
+                                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
+
+                                            <Input
+                                                id="confirmPassword"
+                                                type="text"
+                                                placeholder="•••••••"
+                                                className="text-2xl pl-10 border-black/30 dark:border-white/20 focus:ring-2 focus:ring-black dark:focus:ring-white"
+                                                {...register("confirmPassword", {
+                                                    required: "Confirm password is required",
+                                                    validate: (val) =>
+                                                        val === getValues("password") || "Passwords do not match",
+                                                })}
+                                            />
+                                        </div>
+
+                                        {errors.confirmPassword && (
+                                            <p className="text-pink-600 text-sm">
+                                                {errors.confirmPassword.message}
+                                            </p>
+                                        )}
+                                    </div>
+
                                 </motion.div>
                             )}
 

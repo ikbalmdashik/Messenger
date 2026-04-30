@@ -1,4 +1,10 @@
+"use client";
+
+import Routes from "@/app/routes/routes";
+import { useRouter } from "next/navigation";
+
 const TokenExpire: React.FC = () => {
+    const router = useRouter();
     return (
         <div className="min-h-screen flex items-center justify-center px-4 bg-white text-gray-900 dark:bg-gray-950 dark:text-white transition-colors">
 
@@ -37,9 +43,10 @@ const TokenExpire: React.FC = () => {
                 <div className="mt-6 flex flex-col gap-3">
 
                     <button
-                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 transition active:scale-[0.98]"
-                        onClick={  }>
-                        Go Back to Login
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition active:scale-[0.98]"
+                        onClick={() => router.replace(Routes.Login)}
+                        >
+                            Go Back to Login
                     </button>
                 </div>
 
