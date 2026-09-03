@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ChatService } from './chat.service';
-import { CreateChatDto, CreateChatDtoDemo } from './dto/create-chat.dto';
+import { CreateChatDto } from './dto/create-chat.dto';
 
 @Controller('chat')
 export class ChatController {
@@ -15,16 +15,6 @@ export class ChatController {
   @Get('/messages')
   async getMessages() {
     return await this.chatService.getMessages();
-  }
-
-  @Post("/messagesDemo")
-  async CreateChatDmo(@Body() createChatDtoDemo: CreateChatDtoDemo) {
-    return await this.chatService.CreateChatDemo(createChatDtoDemo);
-  }
-
-  @Get('/messagesDemo')
-  async getMessagesDemo() {
-    return await this.chatService.getMessagesDemo();
   }
 
   @Post("/getConversation")

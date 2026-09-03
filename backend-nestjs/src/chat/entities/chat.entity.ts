@@ -31,18 +31,3 @@ export class ChatMessageEntity {
   @Column()
   createdAt: string;
 }
-
-@Entity("ChatsDemo")
-export class ChatsEntityDemo {
-  @PrimaryGeneratedColumn()
-  id: number;
-
-  @Column()
-  userName: string;
-
-  @Column()
-  message: string;
-
-  @Column()
-  createdAt: string;
-}

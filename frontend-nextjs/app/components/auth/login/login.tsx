@@ -345,7 +345,7 @@ const MultiStepLogin = () => {
                 </Card>
 
                 {/* Social Login */}
-                {step === 1 && (
+                {/* {step === 1 && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-6 text-center">
                         <p className="text-sm text-muted-foreground mb-6">Or continue with</p>
                         <div className="flex justify-center gap-4">
@@ -386,7 +386,7 @@ const MultiStepLogin = () => {
                             </Button>
                         </div>
                     </motion.div>
-                )}
+                )} */}
             </form>
         </div>
     )

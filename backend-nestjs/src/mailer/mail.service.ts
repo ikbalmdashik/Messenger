@@ -71,7 +71,7 @@ export class MailService {
                 }
             }
         } catch (error) {
-            throw new Error(`Error sending email: ${error.message}`);
+            throw new Error(`Error sending email: ${error}`);
         }
     }
 }

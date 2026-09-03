@@ -1,9 +1,29 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class AddNewColumn1777560623929 implements MigrationInterface {
-    name = 'AddNewColumn1777560623929'
+export class AddNewColumn1788449850680 implements MigrationInterface {
+    name = 'AddNewColumn1788449850680'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`
+            CREATE TABLE "Chats" (
+                "chatId" SERIAL NOT NULL,
+                "senderId" integer NOT NULL,
+                "receiverId" integer NOT NULL,
+                "message" character varying NOT NULL,
+                "status" character varying NOT NULL,
+                "createdAt" character varying NOT NULL,
+                CONSTRAINT "PK_cf55b28aed23b1b076c192f89de" PRIMARY KEY ("chatId")
+            )
+        `);
+        await queryRunner.query(`
+            CREATE TABLE "ChatsDemo" (
+                "id" SERIAL NOT NULL,
+                "userName" character varying NOT NULL,
+                "message" character varying NOT NULL,
+                "createdAt" character varying NOT NULL,
+                CONSTRAINT "PK_10da2208436f24ae8b3d5e5d4fa" PRIMARY KEY ("id")
+            )
+        `);
         await queryRunner.query(`
             CREATE TABLE "users" (
                 "userId" SERIAL NOT NULL,
@@ -30,26 +50,6 @@ export class AddNewColumn1777560623929 implements MigrationInterface {
             )
         `);
         await queryRunner.query(`
-            CREATE TABLE "Chats" (
-                "chatId" SERIAL NOT NULL,
-                "senderId" integer NOT NULL,
-                "receiverId" integer NOT NULL,
-                "message" character varying NOT NULL,
-                "status" character varying NOT NULL,
-                "createdAt" character varying NOT NULL,
-                CONSTRAINT "PK_cf55b28aed23b1b076c192f89de" PRIMARY KEY ("chatId")
-            )
-        `);
-        await queryRunner.query(`
-            CREATE TABLE "ChatsDemo" (
-                "id" SERIAL NOT NULL,
-                "userName" character varying NOT NULL,
-                "message" character varying NOT NULL,
-                "createdAt" character varying NOT NULL,
-                CONSTRAINT "PK_10da2208436f24ae8b3d5e5d4fa" PRIMARY KEY ("id")
-            )
-        `);
-        await queryRunner.query(`
             ALTER TABLE "Chats"
             ADD CONSTRAINT "FK_c7d42f55bd3993c72705a56bba5" FOREIGN KEY ("senderId") REFERENCES "users"("userId") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
@@ -67,16 +67,16 @@ export class AddNewColumn1777560623929 implements MigrationInterface {
             ALTER TABLE "Chats" DROP CONSTRAINT "FK_c7d42f55bd3993c72705a56bba5"
         `);
         await queryRunner.query(`
-            DROP TABLE "ChatsDemo"
-        `);
-        await queryRunner.query(`
-            DROP TABLE "Chats"
-        `);
-        await queryRunner.query(`
             DROP TABLE "auth_tokens"
         `);
         await queryRunner.query(`
             DROP TABLE "users"
+        `);
+        await queryRunner.query(`
+            DROP TABLE "ChatsDemo"
+        `);
+        await queryRunner.query(`
+            DROP TABLE "Chats"
         `);
     }
 
