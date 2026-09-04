@@ -324,8 +324,6 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                     <Button
                                         type="button"
                                         variant="solid"
-                                        color="sky"
-                                        size="2"
                                         onClick={handleSendOtpClick}
                                         loading={loadingState === "sendOtp"}
                                         style={{ width: "100%" }}
@@ -348,11 +346,11 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                     transition={{ duration: 0.2 }}
                                     className="space-y-4"
                                 >
-                                    <Box className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg p-2.5 text-left">
+                                    <Box className="p-2.5 text-center">
                                         <Flex align="center" gap="2">
-                                            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                                            <Text size="2" className="text-emerald-800 dark:text-emerald-200">
-                                                OTP sent successfully to <strong>{sentContactLabel || "your contact"}</strong>. Demo OTP: <strong>{demoOtp}</strong>
+                                            {/* <CheckCircle2 className="w-4 h-4 text-cnter text-emerald-600 flex-shrink-0" /> */}
+                                            <Text size="2" className="">
+                                                OTP sent successfully to <strong>{sentContactLabel || "your contact"}</strong>.
                                             </Text>
                                         </Flex>
                                     </Box>
@@ -360,7 +358,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                     <Box>
                                         <Box mb="2">
                                             <Text as="label" size="2" weight="medium" htmlFor="otpCode">
-                                                Enter OTP Code
+                                                Enter OTP
                                             </Text>
                                         </Box>
                                         <TextField.Root

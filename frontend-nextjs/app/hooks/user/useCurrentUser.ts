@@ -8,7 +8,8 @@ export const initialUser: User = {
     fullName: null,
     phone: null,
     email: null,
-    role: null
+    role: null,
+    isEmailVerified: null,
 }
 
 const useCurrentUser = (userId: number | null): User => {

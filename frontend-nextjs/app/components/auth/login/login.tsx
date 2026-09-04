@@ -243,9 +243,9 @@ const MultiStepLogin = () => {
 
     // Modern Step 5: Email Not Verified Component
     const renderUnverifiedStep = () => (
-        <motion.div key="step5-content" variants={stepVariants} initial="hidden" animate="visible" exit="exit">
-            <Flex direction="column" align="center" gap="4" className="text-center py-2">
-                <Box className="relative">
+        <motion.div key="step5-content" variants={stepVariants} initial="hidden" animate="visible" exit="exit" className="b">
+            <Flex direction="column" align="center" gap="4" className="text-center">
+                <Box className="relative mt-4">
                     <Box className="absolute -inset-1 rounded-full bg-amber-500/20 blur-md animate-pulse" />
                     <Flex align="center" justify="center" className="relative w-16 h-16 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
                         <ShieldAlert className="w-8 h-8 text-amber-500" />
@@ -336,7 +336,7 @@ const MultiStepLogin = () => {
 
             case 5:
                 return (
-                    <Flex direction="column" gap="2" width="100%" align="stretch">
+                    <Flex direction="column" gap="2" width="100%" align="stretch" className="">
                         <Button
                             type="button"
                             onClick={handleSendVerification}
@@ -357,7 +357,7 @@ const MultiStepLogin = () => {
 
                         <Button
                             type="button"
-                            variant="ghost"
+                            variant="outline"
                             color="gray"
                             size="2"
                             onClick={() => {
@@ -403,19 +403,6 @@ const MultiStepLogin = () => {
                                         </Text>
                                     </motion.div>
                                 </AnimatePresence>
-
-                                {step !== 1 && (
-                                    <Button
-                                        variant="ghost"
-                                        type="button"
-                                        onClick={goToPreviousStep}
-                                        className="absolute left-4 top-4"
-                                        size="1"
-                                        radius="full"
-                                    >
-                                        <IoChevronBackOutline />
-                                    </Button>
-                                )}
                             </Box>
 
                             <Box px="4" className="">
@@ -427,14 +414,14 @@ const MultiStepLogin = () => {
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, y: -10 }}
                                             transition={{ duration: 0.2 }}
-                                            className="mb-4"
+                                            className="mt-4"
                                         >
                                             <Callout.Root
                                                 color={notification.type === "success" ? "green" : "red"}
                                                 size="1"
                                                 variant="soft"
                                             >
-                                                <Callout.Icon>
+                                                <Callout.Icon className="flex items-center justify-center my-auto">
                                                     {notification.type === "success" ? (
                                                         <CheckCircle2 className="w-4 h-4" />
                                                     ) : (

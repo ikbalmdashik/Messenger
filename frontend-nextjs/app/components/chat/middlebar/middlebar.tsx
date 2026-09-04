@@ -3,23 +3,63 @@
 import useChats, { Chat } from "@/app/hooks/chat/useChats";
 import useCurrentUser from "@/app/hooks/user/useCurrentUser";
 import API_ENDPOINTS from "@/app/routes/api";
-import { Button } from "@/components/ui/button";
-import { IoChevronBackOutline, IoSend } from "react-icons/io5";
-import { Input } from "@/components/ui/input";
-import { BadgeAlert, BadgeCheck, Check, CheckCheck, Send, SendIcon } from "lucide-react";
-import React, { useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { io, Socket } from "socket.io-client";
 import { motion, AnimatePresence } from "framer-motion";
+import { Paperclip } from "lucide-react";
+import { AiOutlineInfoCircle } from "react-icons/ai";
 
-const Middlebar = ({
-  senderId,
-  receiverId,
-  onBack,
-}: {
+import {
+  Box,
+  Flex,
+  Text,
+  Avatar,
+  Badge,
+  TextField,
+  IconButton,
+  ScrollArea,
+} from "@radix-ui/themes";
+
+import {
+  BadgeAlert,
+  BadgeCheck,
+  Check,
+  CheckCheck,
+  Send,
+  MessageSquare,
+  ArrowLeft,
+} from "lucide-react";
+
+interface MiddlebarProps {
   senderId: number | null;
   receiverId: number | null;
   onBack?: () => void;
-}) => {
+  onOpenProfile?: () => void;
+}
+
+// Sub-component for message status icons
+const StatusIcon = React.memo(({ status }: { status?: any }) => {
+  if (status?.toLowerCase() === "seen") {
+    return <CheckCheck className="w-3.5 h-3.5 text-sky-400" />;
+  }
+  if (status?.toLowerCase() === "delivered") {
+    return <CheckCheck className="w-3.5 h-3.5 text-slate-400" />;
+  }
+  return <Check className="w-3.5 h-3.5 text-slate-400" />;
+});
+StatusIcon.displayName = "StatusIcon";
+
+// Helper to safely parse date and time string formats
+const parseChatTimestamp = (timestamp?: any) => {
+  if (!timestamp) return { datePart: null, timePart: "" };
+  if (timestamp.includes(" - ")) {
+    const [datePart, timePart] = timestamp.split(" - ");
+    return { datePart, timePart };
+  }
+  return { datePart: null, timePart: timestamp };
+};
+
+const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onOpenProfile }) => {
   const receiver = useCurrentUser(Number(receiverId));
   const chatsData = useChats(Number(senderId), Number(receiverId));
 
@@ -27,15 +67,20 @@ const Middlebar = ({
   const [message, setMessage] = useState("");
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load chats
+  // Sync initial chat history from hook
   useEffect(() => {
     if (chatsData) setChats(chatsData);
   }, [chatsData]);
 
-  // Socket connection
+  // Manage persistent WebSocket connection
   useEffect(() => {
+    if (!senderId || !receiverId) return;
+
     const socket = io(API_ENDPOINTS.DefaultURL);
+    socketRef.current = socket;
 
     socket.emit("join_room", { senderId, receiverId });
 
@@ -43,162 +88,284 @@ const Middlebar = ({
       setChats((prev) => [...prev, msg]);
     });
 
-    return () => { socket.disconnect() };
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
   }, [senderId, receiverId]);
 
-  // Auto scroll
+  // Auto scroll to bottom when new messages arrive
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chats]);
 
-  const sendMessage = () => {
-    if (!message.trim()) return;
+  // Send message using the persistent socket reference
+  const sendMessage = useCallback(() => {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage || !socketRef.current) return;
 
-    const socket = io(API_ENDPOINTS.DefaultURL);
-
-    socket.emit("send_message", {
+    socketRef.current.emit("send_message", {
       senderId,
       receiverId,
-      message,
+      message: trimmedMessage,
       status: "sent",
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
     });
 
     setMessage("");
+  }, [message, senderId, receiverId]);
+
+  // Handle enter key trigger
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
   };
 
-  const StatusIcon = ({ status }: { status: string }) => {
-    if (status === "seen") return <CheckCheck size={14} className="text-blue-500" />;
-    if (status === "delivered") return <CheckCheck size={14} />;
-    return <Check size={14} />;
+  const handleSendMessage = () => {
+    if (!message.trim()) return;
+
+    sendMessage();
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
   };
 
-  if (!receiver?.userId) {
+  // Memoized check for valid user session selection
+  const hasSelectedUser = useMemo(() => Boolean(receiver?.userId), [receiver?.userId]);
+
+  if (!hasSelectedUser) {
     return (
-      <div className="h-full flex items-center justify-center text-muted-foreground">
-        Select a user to start chatting
-      </div>
+      <Flex direction="column" align="center" justify="center" className="h-full w-full p-6 text-center">
+        <Box className="p-4 rounded-full bg-slate-100 dark:bg-slate-800/50 mb-3">
+          <MessageSquare className="w-8 h-8 text-sky-500 opacity-80" />
+        </Box>
+        <Text size="3" weight="bold" className="text-slate-700 dark:text-slate-200">
+          No Conversation Selected
+        </Text>
+        <Text size="2" color="gray" className="mt-1 max-w-xs">
+          Select a contact from the sidebar to view message history and send messages.
+        </Text>
+      </Flex>
     );
   }
 
   return (
-    <div className="flex flex-col h-full w-full backdrop-blur-xl bg-white/10 dark:bg-black/20 border-l border-white/20 overflow-hidden">
-
+    <Flex direction="column" className="h-full w-full backdrop-blur-xl">
       {/* Header */}
-      <div className="h-14 flex items-center px-4 gap-3 border-b border-white/20 backdrop-blur-xl bg-white/10">
-        {onBack && (
-          <button onClick={onBack} className="md:hidden text-sm">
-            <IoChevronBackOutline size={30} />
-          </button>
-        )}
-        <div>
-          <h1 className="font-semibold flex items-center gap-1">
-            {receiver.fullName}
-
-            {receiver.isEmailVerified ? (
-              <BadgeCheck className="w-5 h-5 text-green-600 pb-0.5" />
-            ) : (
-              <BadgeAlert className="w-5 h-5 text-rose-500 pb-0.5" />
-            )}
-          </h1>
-
-          <p className="text-xs opacity-60">{receiver.role}</p>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        <AnimatePresence>
-          {chats.map((chat) => {
-            const isMine = chat.senderId === senderId;
-
-            return (
-              <motion.div
-                key={chat.chatId}
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="flex w-full"
+      <Box p="3" className="border-b border-[var(--gray-a4)]">
+        <Flex align="center" justify="between">
+          <Flex align="center" gap="3">
+            {onBack && (
+              <IconButton
+                variant="ghost"
+                color="gray"
+                size="2"
+                onClick={onBack}
+                className="md:hidden cursor-pointer"
               >
-                <div className="flex flex-col w-full items-center gap-1">
-                  {/* Date above bubble, centered */}
-                  <div className="text-[11px] text-white/60 mb-1">
-                    {chat.createdAt?.split(" - ")[0]}
-                  </div>
+                <ArrowLeft className="w-5 h-5" />
+              </IconButton>
+            )}
 
-                  {/* Message bubble wrapper for alignment */}
-                  <div
-                    className={`flex w-full ${isMine ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`
-                          max-w-[75%] px-4 py-2 rounded-2xl
-                          break-words whitespace-pre-wrap
-                          backdrop-blur-xl border shadow-lg
-                          ${isMine
-                          ? "bg-blue-500/20 border-blue-400/30 text-white"
-                          : "bg-white/10 border-white/20 text-white"
-                        }
-                      `}
-                    >
-                      <p className="text-sm">{chat.message}</p>
-                    </div>
-                  </div>
+            <Avatar
+              size="2"
+              radius="full"
+              fallback={receiver?.fullName ? receiver.fullName.slice(0, 2).toUpperCase() : "U"}
+              color="sky"
+              variant="soft"
+            />
 
-                  {/* Status with tick + time */}
-                  {isMine && (
-                    <div className="flex w-full justify-end items-center gap-1 text-[11px] text-white/60 mt-1">
-                      <StatusIcon status="Seen" />
-                      <span>{chat.createdAt?.split(" - ")[1]}</span>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
+            <Box>
+              <Flex align="center" gap="1.5">
+                <Text size="3" weight="bold" className="text-slate-800 dark:text-slate-100">
+                  {receiver?.fullName}
+                </Text>
+                {receiver?.isEmailVerified ? (
+                  <BadgeCheck className="w-4 h-4 text-emerald-500" />
+                ) : (
+                  <BadgeAlert className="w-4 h-4 text-rose-500" />
+                )}
+              </Flex>
+              {receiver?.role && (
+                <Text size="1" color="gray" className="capitalize block">
+                  {receiver.role}
+                </Text>
+              )}
+            </Box>
+          </Flex>
 
-            );
-          })}
-        </AnimatePresence>
-        <div ref={bottomRef} />
-      </div>
+          <Flex align="center" gap="2">
+            <IconButton
+              variant="ghost"
+              color="gray"
+              onClick={() => onOpenProfile?.()}
+            >
+              <AiOutlineInfoCircle className="h-5 w-5" />
+            </IconButton>
+          </Flex>
 
-      <div className="h-16 flex items-center px-3 border-t border-white/20 backdrop-blur-xl bg-white/10">
-        <div className="relative w-full">
-          {/* Input */}
-          <Input
+          <Badge color={receiver?.isEmailVerified ? "green" : "amber"} variant="soft" size="1">
+            {receiver?.isEmailVerified ? "Verified User" : "Unverified"}
+          </Badge>
+        </Flex>
+      </Box>
+
+      {/* Messages Feed */}
+      <Box className="flex-1 overflow-hidden">
+        <ScrollArea type="hover" scrollbars="vertical" className="h-full p-4">
+          <AnimatePresence initial={false}>
+            {chats.map((chat, idx) => {
+              const isMine = chat.senderId === senderId;
+              const { datePart, timePart } = parseChatTimestamp(chat.createdAt);
+
+              return (
+                <motion.div
+                  key={chat.chatId || idx}
+                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="mb-3"
+                >
+                  <Flex direction="column" align="center" gap="1">
+                    {/* Centered Date Separator */}
+                    {datePart && (
+                      <Text size="1" color="gray" className="my-1 text-[11px] opacity-70">
+                        {datePart}
+                      </Text>
+                    )}
+
+                    {/* Message Row */}
+                    <Flex justify={isMine ? "end" : "start"} className="w-full">
+                      <Box
+                        className={`max-w-[75%] px-3.5 py-2 rounded-2xl break-words text-sm shadow-sm transition-all ${isMine
+                          ? "bg-sky-600 text-white rounded-br-xs"
+                          : "bg-slate-200/80 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 border border-[var(--gray-a3)] rounded-bl-xs"
+                          }`}
+                      >
+                        <Text size="2" className="leading-relaxed whitespace-pre-wrap">
+                          {chat.message}
+                        </Text>
+                      </Box>
+                    </Flex>
+
+                    {/* Message Timestamp & Delivery Status */}
+                    {isMine && (
+                      <Flex align="center" gap="1" className="w-full justify-end px-1">
+                        <StatusIcon status={chat.status} />
+                        <Text size="1" color="gray" className="text-[10px]">
+                          {timePart}
+                        </Text>
+                      </Flex>
+                    )}
+                  </Flex>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+          <div ref={bottomRef} />
+        </ScrollArea>
+      </Box>
+
+      {/* Message Input Footer */}
+      <Box p="3" className="border-t border-[var(--gray-a4)]">
+        <Flex
+          align="center"
+          gap="2"
+          className="
+      rounded
+      border
+      border-[var(--gray-a4)]
+      bg-[var(--gray-a2)]
+      px-3
+      py-2
+      transition-colors
+      focus-within:border-[var(--accent-a7)]
+      focus-within:bg-[var(--gray-a1)]
+    "
+        >
+          {/* Attachment */}
+          <IconButton
+            type="button"
+            size="1"
+            variant="ghost"
+            color="gray"
+            className="
+        !rounded-lg
+        !p-1.5
+        shrink-0
+        text-[var(--gray-a8)]
+        hover:text-[var(--gray-a11)]
+      "
+          >
+            <Paperclip className="h-4 w-4" />
+          </IconButton>
+
+          {/* Message */}
+          <textarea
+            ref={textareaRef}
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type a message..."
-            className="pr-12 h-10 bg-transparent border-white/20 focus-visible:ring-0"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                sendMessage();
-              }
+            onChange={(e) => {
+              setMessage(e.target.value);
+
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
             }}
+            onKeyDown={handleKeyDown}
+            placeholder="Write a message..."
+            rows={1}
+            className="
+    min-h-[20px]
+    max-h-[120px]
+    min-w-0
+    flex-1
+    resize-none
+    overflow-y-auto
+    bg-transparent
+    text-sm
+    leading-6
+    text-[var(--gray-a12)]
+    placeholder:text-[var(--gray-a8)]
+    outline-none
+  "
           />
 
-          {/* Send Button Inside */}
-          <button
-            onClick={sendMessage}
-            disabled={message.trim().length === 0}
+          {/* Send */}
+          <IconButton
+            type="button"
+            size="2"
+            variant="ghost"
+            color="gray"
+            onClick={handleSendMessage}
+            disabled={!message.trim()}
             className={`
-                absolute right-1 top-1/2 -translate-y-1/2 bg-transparent
-                h-8 w-8 flex items-center justify-center
-                rounded-sm transition-all duration-200
-                ${message.trim().length === 0
-                ? "bg-transparent text-white/40 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+        !rounded-full
+        shrink-0
+        transition-all
+        duration-200
+        ${message.trim()
+                ? `
+              !text-[var(--gray-a12)]
+              hover:!bg-[var(--gray-a4)]
+              hover:scale-105
+              active:scale-90
+            `
+                : `
+              !text-[var(--gray-a6)]
+              opacity-60
+            `
               }
       `}
           >
-            <IoSend size={20} />
-          </button>
-        </div>
-      </div>
-
-    </div>
+            <Send className="h-4 w-4" />
+          </IconButton>
+        </Flex>
+      </Box>
+    </Flex>
   );
 };
 
-export default Middlebar;
+export default React.memo(Middlebar);
