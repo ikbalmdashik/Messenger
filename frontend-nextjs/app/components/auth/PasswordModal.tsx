@@ -1,484 +1,3 @@
-// "use client"
-
-// import React, { useState, useEffect } from "react"
-// import { useFormContext } from "react-hook-form"
-// import { motion, AnimatePresence } from "framer-motion"
-// import { Lock, AlertCircle, Eye, EyeOff, ShieldCheck, Send, CheckCircle2, ArrowLeft } from "lucide-react"
-// import { MdClose } from "react-icons/md"
-// import axios from "axios"
-// import {
-//     Flex,
-//     Text,
-//     Box,
-//     TextField,
-//     AlertDialog,
-//     IconButton,
-//     Button,
-//     Select
-// } from "@radix-ui/themes"
-// import API_ENDPOINTS from "@/app/routes/api"
-
-// export type ContactOption = {
-//     id: string
-//     label: string
-//     type: "email" | "phone" | "otp"
-//     value: string
-// }
-
-// export type PasswordModalProps = {
-//     isOpen: boolean
-//     onOpenChange: (open: boolean) => void
-//     title?: string
-//     subtitleAccount?: string
-//     passwordError?: string | null
-//     loadingState?: string | null
-//     contactOptions?: ContactOption[]
-//     onPasswordReset?: () => Promise<void> | void
-//     onSwitchAccount?: () => void
-//     demoOtp?: string
-//     onSubmitPassword: () => void | Promise<boolean | void>
-//     onSendOtp?: (selectedContact: ContactOption) => Promise<void> | void
-//     onSubmitOtp?: () => Promise<boolean | void> | void
-//     onSuccessNext?: () => void | Promise<void>
-// }
-
-// export const PasswordModal: React.FC<PasswordModalProps> = ({
-//     isOpen,
-//     onOpenChange,
-//     title = "Enter Password",
-//     subtitleAccount,
-//     passwordError,
-//     loadingState,
-//     contactOptions = [],
-//     demoOtp = "123456",
-//     onSubmitPassword,
-//     onSendOtp,
-//     onSubmitOtp,
-//     onPasswordReset,
-//     onSwitchAccount,
-//     onSuccessNext
-// }) => {
-//     const [showPassword, setShowPassword] = useState(false)
-//     const [viewMode, setViewMode] = useState<"PASSWORD" | "SELECT_CONTACT" | "ENTER_OTP">("PASSWORD")
-//     const [selectedContactId, setSelectedContactId] = useState<string>("")
-//     const [sentContactLabel, setSentContactLabel] = useState<string>("")
-
-//     // State for temporary verification success message
-//     const [successMessage, setSuccessMessage] = useState<string | null>(null)
-
-//     const { register, trigger, formState: { errors }, resetField } = useFormContext()
-
-//     const availableContacts: ContactOption[] = contactOptions.length > 0 ? contactOptions : [
-//         { id: "1", label: subtitleAccount ? `Email (${subtitleAccount})` : "Primary Email", type: "email", value: subtitleAccount || "" },
-//         { id: "2", label: "SMS to registered phone number", type: "phone", value: "***-***-1234" },
-//     ]
-
-//     useEffect(() => {
-//         if (successMessage) {
-//             const timer = setTimeout(() => {
-//                 setSuccessMessage(null)
-//             }, 5000)
-//             return () => clearTimeout(timer)
-//         }
-//     }, [successMessage])
-
-//     // Reset view state when modal closes
-//     useEffect(() => {
-//         if (!isOpen) {
-//             setViewMode("PASSWORD")
-//             setSuccessMessage(null)
-//         }
-//     }, [isOpen])
-
-//     const handleSwitchToTryAnotherWay = () => {
-//         setViewMode("SELECT_CONTACT")
-//         resetField("password")
-//         if (availableContacts.length > 0 && !selectedContactId) {
-//             setSelectedContactId(availableContacts[0].id)
-//         }
-//     }
-
-//     const handleSwitchToPassword = () => {
-//         setViewMode("PASSWORD")
-//         resetField("otpCode")
-//     }
-
-//     // const handleSendOtpClick = async () => {
-//     //     const contact = availableContacts.find((c) => c.id === selectedContactId) || availableContacts[0]
-//     //     if (onSendOtp) {
-//     //         await onSendOtp(contact)
-//     //     }
-//     //     setSentContactLabel(contact.value || contact.label)
-//     //     setViewMode("ENTER_OTP")
-//     // }
-
-
-//     const handleSendOtpClick = async () => {
-//         const contact =
-//             availableContacts.find((c) => c.id === selectedContactId) ||
-//             availableContacts[0];
-
-//         if (!contact) {
-//             return;
-//         }
-
-//         try {
-//             // Call API to send OTP
-//             await axios.post(
-//                 API_ENDPOINTS.SendLink,
-//                 {
-//                     email: contact.value,
-//                     type: "VERIFY_EMAIL"
-//                 },
-//                 {
-//                     withCredentials: true,
-//                 }
-//             );
-
-//             // Only move to OTP screen if API succeeds
-//             setSentContactLabel(contact.value || contact.label);
-//             setViewMode("ENTER_OTP");
-
-//         } catch (error) {
-//             console.error("Failed to send OTP:", error);
-
-//             // You can show your Radix Alert/Dialog here
-//             // setError("Failed to send OTP. Please try again.");
-//         }
-//     };
-
-//     const handlePasswordSubmit = async () => {
-//         // Trigger validation inside modal form context
-//         const isValid = await trigger("password")
-//         if (!isValid) return
-
-//         // Execute submission directly and check returned boolean
-//         const success = await onSubmitPassword()
-
-//         if (success !== false) {
-//             if (onSuccessNext) {
-//                 await onSuccessNext()
-//             } else {
-//                 onOpenChange(false)
-//             }
-//         }
-//     }
-
-//     const handleOtpVerifySubmit = async () => {
-//         const isValid = await trigger("otpCode")
-//         if (!isValid) return
-
-//         try {
-//             const handler = onSubmitOtp || onSubmitPassword
-//             const result = await handler()
-
-//             if (result !== false) {
-//                 setSuccessMessage("Verification successful! Access granted.")
-//                 if (onSuccessNext) {
-//                     await onSuccessNext()
-//                 }
-//             }
-//         } catch (err) {
-//             // Error handling
-//         }
-//     }
-
-//     return (
-//         <AlertDialog.Root open={isOpen} onOpenChange={onOpenChange}>
-//             <AlertDialog.Content maxWidth="400px" className="relative p-6 overflow-hidden">
-//                 {/* Top-Right Close Button */}
-//                 <Box className="absolute top-3 right-3">
-//                     <AlertDialog.Cancel>
-//                         <IconButton variant="ghost" color="gray" type="button" size="2">
-//                             <MdClose className="w-5 h-5" />
-//                         </IconButton>
-//                     </AlertDialog.Cancel>
-//                 </Box>
-
-//                 <Flex direction="column" align="center" className="text-center pt-2">
-//                     <AlertDialog.Title className="text-center">
-//                         {viewMode === "PASSWORD"
-//                             ? title
-//                             : viewMode === "SELECT_CONTACT"
-//                                 ? "Try Another Way"
-//                                 : "Enter Verification Code"}
-//                     </AlertDialog.Title>
-
-//                     {subtitleAccount && (
-//                         <AlertDialog.Description size="2" my="2" className="text-center">
-//                             Account: <strong>{subtitleAccount}</strong>
-//                         </AlertDialog.Description>
-//                     )}
-
-//                     {/* Temporary 5-Second Success Notification Banner */}
-//                     <AnimatePresence>
-//                         {successMessage && (
-//                             <motion.div
-//                                 initial={{ opacity: 0, y: -10 }}
-//                                 animate={{ opacity: 1, y: 0 }}
-//                                 exit={{ opacity: 0, y: -10 }}
-//                                 transition={{ duration: 0.2 }}
-//                                 className="w-full my-2"
-//                             >
-//                                 <Box className="bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-700 rounded-lg p-3 text-left">
-//                                     <Flex align="center" gap="2">
-//                                         <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-//                                         <Text size="2" weight="medium" className="text-emerald-900 dark:text-emerald-100">
-//                                             {successMessage}
-//                                         </Text>
-//                                     </Flex>
-//                                 </Box>
-//                             </motion.div>
-//                         )}
-//                     </AnimatePresence>
-
-//                     <Box width="100%" my="3" className="text-left">
-//                         <AnimatePresence mode="wait">
-//                             {/* VIEW 1: Standard Password Prompt */}
-//                             {viewMode === "PASSWORD" && (
-//                                 <motion.div
-//                                     key="password-view"
-//                                     initial={{ opacity: 0, x: -20 }}
-//                                     animate={{ opacity: 1, x: 0 }}
-//                                     exit={{ opacity: 0, x: 20 }}
-//                                     transition={{ duration: 0.2 }}
-//                                     className="space-y-4"
-//                                 >
-//                                     <Box>
-//                                         <Flex justify="between" align="center" mb="2">
-//                                             <Text as="label" size="2" weight="medium" htmlFor="dialogPassword">
-//                                                 Password
-//                                             </Text>
-//                                             <Button
-//                                                 type="button"
-//                                                 variant="ghost"
-//                                                 color="indigo"
-//                                                 size="1"
-//                                                 mr="2"
-//                                                 onClick={handleSwitchToTryAnotherWay}
-//                                                 className="cursor-pointer hover:underline p-0 h-auto"
-//                                             >
-//                                                 Try another way?
-//                                             </Button>
-//                                         </Flex>
-
-//                                         <TextField.Root
-//                                             id="dialogPassword"
-//                                             type={showPassword ? "text" : "password"}
-//                                             placeholder={showPassword ? "Enter password" : "●●●●●●●●"}
-//                                             className={!showPassword ? "tracking-[3px]" : ""}
-//                                             {...register("password", {
-//                                                 required: viewMode === "PASSWORD" ? "Password is required" : false
-//                                             })}
-//                                         >
-//                                             <TextField.Slot>
-//                                                 <Lock className="w-5 h-5 text-gray-400" />
-//                                             </TextField.Slot>
-//                                             <TextField.Slot pr="2">
-//                                                 <IconButton
-//                                                     size="1"
-//                                                     variant="ghost"
-//                                                     color="gray"
-//                                                     type="button"
-//                                                     onClick={() => setShowPassword((prev) => !prev)}
-//                                                 >
-//                                                     {showPassword ? (
-//                                                         <EyeOff className="w-4 h-4 text-gray-500" />
-//                                                     ) : (
-//                                                         <Eye className="w-4 h-4 text-gray-500" />
-//                                                     )}
-//                                                 </IconButton>
-//                                             </TextField.Slot>
-//                                         </TextField.Root>
-
-//                                         {(errors.password || passwordError) && (
-//                                             <Flex align="center" gap="1" mt="1.5" className="text-red-500">
-//                                                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-//                                                 <Text size="2" color="red">
-//                                                     {(errors.password?.message as string) || passwordError}
-//                                                 </Text>
-//                                             </Flex>
-//                                         )}
-//                                     </Box>
-
-//                                     <Button
-//                                         type="button"
-//                                         onClick={handlePasswordSubmit}
-//                                         loading={loadingState === "login"}
-//                                         style={{ width: "100%" }}
-//                                     >
-//                                         Verify Password
-//                                     </Button>
-//                                 </motion.div>
-//                             )}
-
-//                             {/* VIEW 2: Select Contact & Send OTP */}
-//                             {viewMode === "SELECT_CONTACT" && (
-//                                 <motion.div
-//                                     key="select-contact-view"
-//                                     initial={{ opacity: 0, x: 20 }}
-//                                     animate={{ opacity: 1, x: 0 }}
-//                                     exit={{ opacity: 0, x: -20 }}
-//                                     transition={{ duration: 0.2 }}
-//                                     className="space-y-4"
-//                                 >
-//                                     <Button
-//                                         type="button"
-//                                         variant="ghost"
-//                                         color="indigo"
-//                                         size="2"
-//                                         onClick={handleSwitchToPassword}
-//                                         className="w-full justify-center"
-//                                     >
-//                                         <Flex align="center" gap="2" justify="center">
-//                                             <ArrowLeft className="w-4 h-4" />
-//                                             <Text size="2">Use Password Instead</Text>
-//                                         </Flex>
-//                                     </Button>
-
-//                                     <Box>
-//                                         <Box mb="2">
-//                                             <Text as="label" size="2" weight="medium">
-//                                                 Select Contact Option
-//                                             </Text>
-//                                         </Box>
-//                                         <Select.Root
-//                                             value={selectedContactId || availableContacts[0]?.id}
-//                                             onValueChange={(val) => setSelectedContactId(val)}
-//                                         >
-//                                             <Select.Trigger style={{ width: "100%" }} />
-//                                             <Select.Content position="popper">
-//                                                 {availableContacts.map((contact) => (
-//                                                     <Select.Item key={contact.id} value={contact.id}>
-//                                                         {contact.label}
-//                                                     </Select.Item>
-//                                                 ))}
-//                                             </Select.Content>
-//                                         </Select.Root>
-//                                     </Box>
-
-//                                     <Button
-//                                         type="button"
-//                                         variant="solid"
-//                                         onClick={handleSendOtpClick}
-//                                         loading={loadingState === "sendOtp"}
-//                                         style={{ width: "100%" }}
-//                                     >
-//                                         <Flex align="center" gap="2" justify="center">
-//                                             <Send className="w-4 h-4" />
-//                                             Send OTP
-//                                         </Flex>
-//                                     </Button>
-//                                 </motion.div>
-//                             )}
-
-//                             {/* VIEW 3: OTP Sent + Input Field & Verify Button */}
-//                             {viewMode === "ENTER_OTP" && (
-//                                 <motion.div
-//                                     key="enter-otp-view"
-//                                     initial={{ opacity: 0, x: 20 }}
-//                                     animate={{ opacity: 1, x: 0 }}
-//                                     exit={{ opacity: 0, x: -20 }}
-//                                     transition={{ duration: 0.2 }}
-//                                     className="space-y-4"
-//                                 >
-//                                     <Box className="p-2.5 text-center">
-//                                         <Flex align="center" gap="2">
-//                                             {/* <CheckCircle2 className="w-4 h-4 text-cnter text-emerald-600 flex-shrink-0" /> */}
-//                                             <Text size="2" className="">
-//                                                 OTP sent successfully to <strong>{sentContactLabel || "your contact"}</strong>.
-//                                             </Text>
-//                                         </Flex>
-//                                     </Box>
-
-//                                     <Box>
-//                                         <Box mb="2">
-//                                             <Text as="label" size="2" weight="medium" htmlFor="otpCode">
-//                                                 Enter OTP
-//                                             </Text>
-//                                         </Box>
-//                                         <TextField.Root
-//                                             id="otpCode"
-//                                             type="text"
-//                                             placeholder="Enter 6-digit OTP"
-//                                             {...register("otpCode", {
-//                                                 required: viewMode === "ENTER_OTP" ? "OTP is required" : false
-//                                             })}
-//                                         >
-//                                             <TextField.Slot>
-//                                                 <ShieldCheck className="w-5 h-5 text-indigo-500" />
-//                                             </TextField.Slot>
-//                                         </TextField.Root>
-
-//                                         {errors.otpCode && (
-//                                             <Flex align="center" gap="1" mt="1.5" className="text-red-500">
-//                                                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-//                                                 <Text size="2" color="red">
-//                                                     {errors.otpCode?.message as string}
-//                                                 </Text>
-//                                             </Flex>
-//                                         )}
-//                                     </Box>
-
-//                                     <Flex justify="between" align="center">
-//                                         <Button
-//                                             type="button"
-//                                             variant="ghost"
-//                                             color="gray"
-//                                             size="1"
-//                                             ml="2"
-//                                             onClick={() => setViewMode("SELECT_CONTACT")}
-//                                         >
-//                                             Change Contact Method
-//                                         </Button>
-//                                         <Button
-//                                             type="button"
-//                                             variant="ghost"
-//                                             color="sky"
-//                                             size="1"
-//                                             mr="2"
-//                                             onClick={handleSendOtpClick}
-//                                             loading={loadingState === "sendOtp"}
-//                                         >
-//                                             Resend OTP
-//                                         </Button>
-//                                     </Flex>
-
-//                                     <Button
-//                                         type="button"
-//                                         onClick={handleOtpVerifySubmit}
-//                                         loading={loadingState === "verifyOtp"}
-//                                         style={{ width: "100%" }}
-//                                     >
-//                                         Verify
-//                                     </Button>
-//                                 </motion.div>
-//                             )}
-//                         </AnimatePresence>
-//                     </Box>
-//                 </Flex>
-//             </AlertDialog.Content>
-//         </AlertDialog.Root>
-//     )
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -539,34 +58,18 @@ export type PasswordModalProps = {
 
     contactOptions?: ContactOption[];
 
-    /**
-     * Determines what verification flow is being performed.
-     */
     purpose?: VerificationPurpose;
 
-    /**
-     * Called when password authentication succeeds.
-     */
     onSubmitPassword: () => void | Promise<boolean | void>;
 
-    /**
-     * Optional external password reset handler.
-     *
-     * If provided, this will be called instead of
-     * the internal ResetPassword API.
-     */
     onPasswordReset?: (
         newPassword: string
     ) => Promise<boolean | void> | boolean | void;
 
-    /**
-     * Optional callback when the whole flow succeeds.
-     */
     onSuccessNext?: () => void | Promise<void>;
 
-    /**
-     * Kept for compatibility with your previous component.
-     */
+    onOtpVerified?: () => void | Promise<void>;
+
     onSwitchAccount?: () => void;
 };
 
@@ -591,6 +94,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     onSubmitPassword,
     onPasswordReset,
     onSuccessNext,
+    onOtpVerified,
     onSwitchAccount,
 }) => {
     /* =====================================================
@@ -598,7 +102,13 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     ===================================================== */
 
     const [showPassword, setShowPassword] = useState(false);
+
     const [isSendingOtp, setIsSendingOtp] = useState(false);
+    const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+    const [isResettingPassword, setIsResettingPassword] =
+        useState(false);
+    const [isSubmittingPassword, setIsSubmittingPassword] =
+        useState(false);
 
     const [viewMode, setViewMode] = useState<
         "PASSWORD" |
@@ -650,12 +160,6 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                     type: "email",
                     value: subtitleAccount || "",
                 },
-                {
-                    id: "2",
-                    label: "SMS to registered phone number",
-                    type: "phone",
-                    value: "***-***-1234",
-                },
             ];
 
     /* =====================================================
@@ -681,14 +185,43 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     useEffect(() => {
         if (!isOpen) {
             setViewMode("PASSWORD");
+
             setSelectedContactId("");
+
             setSentContactLabel("");
             setSentContactValue("");
+
             setSuccessMessage(null);
             setApiError(null);
+
             setShowPassword(false);
+
+            setIsSendingOtp(false);
+            setIsVerifyingOtp(false);
+            setIsResettingPassword(false);
+            setIsSubmittingPassword(false);
         }
     }, [isOpen]);
+
+    /* =====================================================
+       AUTO SELECT FIRST CONTACT
+    ===================================================== */
+
+    useEffect(() => {
+        if (
+            viewMode === "SELECT_CONTACT" &&
+            !selectedContactId &&
+            availableContacts.length > 0
+        ) {
+            setSelectedContactId(
+                availableContacts[0].id
+            );
+        }
+    }, [
+        viewMode,
+        selectedContactId,
+        availableContacts,
+    ]);
 
     /* =====================================================
        ERROR HANDLER
@@ -714,18 +247,15 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     const handleSwitchToTryAnotherWay = () => {
         setApiError(null);
 
-        setViewMode("SELECT_CONTACT");
-
         resetField("password");
 
-        if (
-            availableContacts.length > 0 &&
-            !selectedContactId
-        ) {
+        if (availableContacts.length > 0) {
             setSelectedContactId(
                 availableContacts[0].id
             );
         }
+
+        setViewMode("SELECT_CONTACT");
     };
 
     /* =====================================================
@@ -735,9 +265,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     const handleSwitchToPassword = () => {
         setApiError(null);
 
-        setViewMode("PASSWORD");
-
         resetField("otpCode");
+
+        setViewMode("PASSWORD");
     };
 
     /* =====================================================
@@ -745,17 +275,30 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     ===================================================== */
 
     const handleSendOtpClick = async () => {
+        if (isSendingOtp) {
+            return;
+        }
+
         const contact =
-            availableContacts.find((c) => c.id === selectedContactId) ||
+            availableContacts.find(
+                (c) =>
+                    c.id === selectedContactId
+            ) ||
             availableContacts[0];
 
         if (!contact) {
-            setApiError("No contact method is available.");
+            setApiError(
+                "No contact method is available."
+            );
+
             return;
         }
 
         if (!contact.value) {
-            setApiError("The selected contact does not have a valid value.");
+            setApiError(
+                "The selected contact does not have a valid value."
+            );
+
             return;
         }
 
@@ -774,18 +317,33 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                 }
             );
 
-            console.log("OTP sent successfully:", response.data);
+            console.log(
+                "OTP sent successfully:",
+                response.data
+            );
 
-            setSentContactLabel(contact.value || contact.label);
-            setSentContactValue(contact.value);
+            setSentContactLabel(
+                contact.type === "email"
+                    ? contact.value
+                    : contact.label
+            );
+
+            setSentContactValue(
+                contact.value
+            );
 
             resetField("otpCode");
+
             setViewMode("ENTER_OTP");
         } catch (error) {
-            const message = getAxiosErrorMessage(error);
+            console.error(
+                "Failed to send OTP:",
+                error
+            );
 
-            console.error("Failed to send OTP:", error);
-            setApiError(message);
+            setApiError(
+                getAxiosErrorMessage(error)
+            );
         } finally {
             setIsSendingOtp(false);
         }
@@ -796,7 +354,12 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     ===================================================== */
 
     const handleOtpVerifySubmit = async () => {
-        const isValid = await trigger("otpCode");
+        if (isVerifyingOtp) {
+            return;
+        }
+
+        const isValid =
+            await trigger("otpCode");
 
         if (!isValid) {
             return;
@@ -812,28 +375,16 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             setApiError(
                 "Verification contact is missing."
             );
+
             return;
         }
 
         setApiError(null);
+        setIsVerifyingOtp(true);
 
         try {
-            /*
-             * Verify OTP
-             *
-             * Example:
-             *
-             * POST /auth/verify-otp
-             *
-             * {
-             *   email: "user@example.com",
-             *   otp: "123456",
-             *   type: "FORGOT_PASSWORD"
-             * }
-             */
-
             const response = await axios.post(
-                "API_ENDPOINTS.VerifyOtp",
+                API_ENDPOINTS.VerifyOtp,
                 {
                     email: sentContactValue,
                     otp,
@@ -849,32 +400,37 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                 response.data
             );
 
-            /*
-             * FORGOT PASSWORD
-             *
-             * OTP verification is not the final step.
-             *
-             * The user must now create a new password.
-             */
+            /* =============================================
+               LOGIN
+            ============================================= */
 
-            if (purpose === "FORGOT_PASSWORD") {
-                resetField("newPassword");
-                resetField("confirmPassword");
-
-                setViewMode("SET_PASSWORD");
+            if (purpose === "LOGIN") {
+                await onOtpVerified?.();
 
                 return;
             }
 
-            /*
-             * Other flows
-             *
-             * LOGIN
-             * CHANGE_PASSWORD
-             * VERIFY_EMAIL
-             *
-             * Continue directly after OTP verification.
-             */
+            /* =============================================
+               FORGOT PASSWORD
+            ============================================= */
+
+            if (
+                purpose ===
+                "FORGOT_PASSWORD"
+            ) {
+                resetField("newPassword");
+                resetField("confirmPassword");
+
+                setViewMode(
+                    "SET_PASSWORD"
+                );
+
+                return;
+            }
+
+            /* =============================================
+               CHANGE PASSWORD / VERIFY EMAIL
+            ============================================= */
 
             setSuccessMessage(
                 "Verification successful!"
@@ -885,17 +441,17 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             } else {
                 onOpenChange(false);
             }
-
         } catch (error) {
-            const message =
-                getAxiosErrorMessage(error);
-
             console.error(
                 "OTP verification failed:",
                 error
             );
 
-            setApiError(message);
+            setApiError(
+                getAxiosErrorMessage(error)
+            );
+        } finally {
+            setIsVerifyingOtp(false);
         }
     };
 
@@ -904,6 +460,10 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     ===================================================== */
 
     const handleResetPassword = async () => {
+        if (isResettingPassword) {
+            return;
+        }
+
         const isValid = await trigger([
             "newPassword",
             "confirmPassword",
@@ -913,19 +473,20 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             return;
         }
 
-        const newPassword = watch("newPassword");
+        const newPassword =
+            watch("newPassword");
 
         if (!newPassword) {
             return;
         }
 
         setApiError(null);
+        setIsResettingPassword(true);
 
         try {
-            /*
-             * If the parent wants to handle password reset,
-             * allow it to do so.
-             */
+            /* =============================================
+               PARENT PASSWORD RESET HANDLER
+            ============================================= */
 
             if (onPasswordReset) {
                 const result =
@@ -950,23 +511,24 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                 return;
             }
 
-            /*
-             * Otherwise use internal API.
-             *
-             * POST /auth/reset-password
-             */
+            /* =============================================
+               INTERNAL PASSWORD RESET API
+            ============================================= */
 
-            const response = await axios.post(
-                "API_ENDPOINTS.ResetPassword",
-                {
-                    email: sentContactValue,
-                    newPassword,
-                    type: "FORGOT_PASSWORD",
-                },
-                {
-                    withCredentials: true,
-                }
-            );
+            const response =
+                await axios.post(
+                    API_ENDPOINTS.ResetPassword,
+                    {
+                        email:
+                            sentContactValue,
+                        newPassword,
+                        type:
+                            "FORGOT_PASSWORD",
+                    },
+                    {
+                        withCredentials: true,
+                    }
+                );
 
             console.log(
                 "Password reset successfully:",
@@ -982,17 +544,17 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             } else {
                 onOpenChange(false);
             }
-
         } catch (error) {
-            const message =
-                getAxiosErrorMessage(error);
-
             console.error(
                 "Password reset failed:",
                 error
             );
 
-            setApiError(message);
+            setApiError(
+                getAxiosErrorMessage(error)
+            );
+        } finally {
+            setIsResettingPassword(false);
         }
     };
 
@@ -1001,6 +563,10 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     ===================================================== */
 
     const handlePasswordSubmit = async () => {
+        if (isSubmittingPassword) {
+            return;
+        }
+
         const isValid =
             await trigger("password");
 
@@ -1008,15 +574,31 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             return;
         }
 
-        const success =
-            await onSubmitPassword();
+        setApiError(null);
+        setIsSubmittingPassword(true);
 
-        if (success !== false) {
-            if (onSuccessNext) {
-                await onSuccessNext();
-            } else {
-                onOpenChange(false);
+        try {
+            const success =
+                await onSubmitPassword();
+
+            if (success !== false) {
+                if (onSuccessNext) {
+                    await onSuccessNext();
+                } else {
+                    onOpenChange(false);
+                }
             }
+        } catch (error) {
+            console.error(
+                "Password verification failed:",
+                error
+            );
+
+            setApiError(
+                getAxiosErrorMessage(error)
+            );
+        } finally {
+            setIsSubmittingPassword(false);
         }
     };
 
@@ -1056,9 +638,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                 maxWidth="400px"
                 className="relative p-6 overflow-hidden"
             >
-                {/* =================================================
-                    CLOSE BUTTON
-                ================================================= */}
+                {/* CLOSE */}
 
                 <Box className="absolute top-3 right-3">
                     <AlertDialog.Cancel>
@@ -1073,9 +653,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                     </AlertDialog.Cancel>
                 </Box>
 
-                {/* =================================================
-                    HEADER
-                ================================================= */}
+                {/* HEADER */}
 
                 <Flex
                     direction="column"
@@ -1099,9 +677,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                         </AlertDialog.Description>
                     )}
 
-                    {/* =================================================
-                        SUCCESS MESSAGE
-                    ================================================= */}
+                    {/* SUCCESS */}
 
                     <AnimatePresence>
                         {successMessage && (
@@ -1163,9 +739,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                         )}
                     </AnimatePresence>
 
-                    {/* =================================================
-                        API ERROR
-                    ================================================= */}
+                    {/* API ERROR */}
 
                     <AnimatePresence>
                         {apiError && (
@@ -1220,9 +794,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                         )}
                     </AnimatePresence>
 
-                    {/* =================================================
-                        CONTENT
-                    ================================================= */}
+                    {/* CONTENT */}
 
                     <Box
                         width="100%"
@@ -1231,163 +803,166 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                     >
                         <AnimatePresence mode="wait">
 
-                            {/* =================================================
-                                VIEW 1 - PASSWORD
-                            ================================================= */}
+                            {/* PASSWORD */}
 
-                            {viewMode === "PASSWORD" && (
-                                <motion.div
-                                    key="password-view"
-                                    initial={{
-                                        opacity: 0,
-                                        x: -20,
-                                    }}
-                                    animate={{
-                                        opacity: 1,
-                                        x: 0,
-                                    }}
-                                    exit={{
-                                        opacity: 0,
-                                        x: 20,
-                                    }}
-                                    transition={{
-                                        duration: 0.2,
-                                    }}
-                                    className="space-y-4"
-                                >
-                                    <Box>
-                                        <Flex
-                                            justify="between"
-                                            align="center"
-                                            mb="2"
-                                        >
-                                            <Text
-                                                as="label"
-                                                size="2"
-                                                weight="medium"
-                                                htmlFor="dialogPassword"
+                            {viewMode ===
+                                "PASSWORD" && (
+                                    <motion.div
+                                        key="password-view"
+                                        initial={{
+                                            opacity: 0,
+                                            x: -20,
+                                        }}
+                                        animate={{
+                                            opacity: 1,
+                                            x: 0,
+                                        }}
+                                        exit={{
+                                            opacity: 0,
+                                            x: 20,
+                                        }}
+                                        transition={{
+                                            duration: 0.2,
+                                        }}
+                                        className="space-y-4"
+                                    >
+                                        <Box>
+                                            <Flex
+                                                justify="between"
+                                                align="center"
+                                                mb="2"
                                             >
-                                                Password
-                                            </Text>
+                                                <Text
+                                                    as="label"
+                                                    size="2"
+                                                    weight="medium"
+                                                    htmlFor="dialogPassword"
+                                                >
+                                                    Password
+                                                </Text>
 
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                color="indigo"
-                                                size="1"
-                                                mr="2"
-                                                onClick={
-                                                    handleSwitchToTryAnotherWay
-                                                }
-                                                className="
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    color="indigo"
+                                                    size="1"
+                                                    mr="2"
+                                                    onClick={
+                                                        handleSwitchToTryAnotherWay
+                                                    }
+                                                    className="
                                                     cursor-pointer
                                                     hover:underline
                                                     p-0
                                                     h-auto
                                                 "
-                                            >
-                                                Try another way?
-                                            </Button>
-                                        </Flex>
+                                                >
+                                                    Try another way?
+                                                </Button>
+                                            </Flex>
 
-                                        <TextField.Root
-                                            id="dialogPassword"
-                                            type={
-                                                showPassword
-                                                    ? "text"
-                                                    : "password"
-                                            }
-                                            placeholder={
-                                                showPassword
-                                                    ? "Enter password"
-                                                    : "●●●●●●●●"
-                                            }
-                                            className={
-                                                !showPassword
-                                                    ? "tracking-[3px]"
-                                                    : ""
-                                            }
-                                            {...register(
-                                                "password",
-                                                {
-                                                    required:
-                                                        viewMode ===
-                                                            "PASSWORD"
-                                                            ? "Password is required"
-                                                            : false,
+                                            <TextField.Root
+                                                id="dialogPassword"
+                                                type={
+                                                    showPassword
+                                                        ? "text"
+                                                        : "password"
                                                 }
-                                            )}
-                                        >
-                                            <TextField.Slot>
-                                                <Lock className="w-5 h-5 text-gray-400" />
-                                            </TextField.Slot>
-
-                                            <TextField.Slot pr="2">
-                                                <IconButton
-                                                    size="1"
-                                                    variant="ghost"
-                                                    color="gray"
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setShowPassword(
-                                                            (prev) =>
-                                                                !prev
-                                                        )
+                                                placeholder={
+                                                    showPassword
+                                                        ? "Enter password"
+                                                        : "●●●●●●●●"
+                                                }
+                                                className={
+                                                    !showPassword
+                                                        ? "tracking-[3px]"
+                                                        : ""
+                                                }
+                                                {...register(
+                                                    "password",
+                                                    {
+                                                        required:
+                                                            viewMode ===
+                                                                "PASSWORD"
+                                                                ? "Password is required"
+                                                                : false,
                                                     }
-                                                >
-                                                    {showPassword ? (
-                                                        <EyeOff className="w-4 h-4 text-gray-500" />
-                                                    ) : (
-                                                        <Eye className="w-4 h-4 text-gray-500" />
-                                                    )}
-                                                </IconButton>
-                                            </TextField.Slot>
-                                        </TextField.Root>
+                                                )}
+                                            >
+                                                <TextField.Slot>
+                                                    <Lock className="w-5 h-5 text-gray-400" />
+                                                </TextField.Slot>
 
-                                        {(errors.password ||
-                                            passwordError) && (
-                                                <Flex
-                                                    align="center"
-                                                    gap="1"
-                                                    mt="1.5"
-                                                    className="text-red-500"
-                                                >
-                                                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-
-                                                    <Text
-                                                        size="2"
-                                                        color="red"
+                                                <TextField.Slot pr="2">
+                                                    <IconButton
+                                                        size="1"
+                                                        variant="ghost"
+                                                        color="gray"
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setShowPassword(
+                                                                (prev) =>
+                                                                    !prev
+                                                            )
+                                                        }
                                                     >
-                                                        {(errors
-                                                            .password
-                                                            ?.message as string) ||
-                                                            passwordError}
-                                                    </Text>
-                                                </Flex>
-                                            )}
-                                    </Box>
+                                                        {showPassword ? (
+                                                            <EyeOff className="w-4 h-4 text-gray-500" />
+                                                        ) : (
+                                                            <Eye className="w-4 h-4 text-gray-500" />
+                                                        )}
+                                                    </IconButton>
+                                                </TextField.Slot>
+                                            </TextField.Root>
 
-                                    <Button
-                                        type="button"
-                                        onClick={
-                                            handlePasswordSubmit
-                                        }
-                                        loading={
-                                            loadingState ===
-                                            "login"
-                                        }
-                                        style={{
-                                            width: "100%",
-                                        }}
-                                    >
-                                        Verify Password
-                                    </Button>
-                                </motion.div>
-                            )}
+                                            {(errors.password ||
+                                                passwordError) && (
+                                                    <Flex
+                                                        align="center"
+                                                        gap="1"
+                                                        mt="1.5"
+                                                        className="text-red-500"
+                                                    >
+                                                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
 
-                            {/* =================================================
-                                VIEW 2 - SELECT CONTACT
-                            ================================================= */}
+                                                        <Text
+                                                            size="2"
+                                                            color="red"
+                                                        >
+                                                            {(errors
+                                                                .password
+                                                                ?.message as string) ||
+                                                                passwordError}
+                                                        </Text>
+                                                    </Flex>
+                                                )}
+                                        </Box>
+
+                                        <Button
+                                            type="button"
+                                            onClick={
+                                                handlePasswordSubmit
+                                            }
+                                            loading={
+                                                isSubmittingPassword ||
+                                                loadingState ===
+                                                "login"
+                                            }
+                                            disabled={
+                                                isSubmittingPassword ||
+                                                loadingState ===
+                                                "login"
+                                            }
+                                            style={{
+                                                width: "100%",
+                                            }}
+                                        >
+                                            Verify Password
+                                        </Button>
+                                    </motion.div>
+                                )}
+
+                            {/* SELECT CONTACT */}
 
                             {viewMode ===
                                 "SELECT_CONTACT" && (
@@ -1452,12 +1027,8 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                                     availableContacts[0]
                                                         ?.id
                                                 }
-                                                onValueChange={(
-                                                    value
-                                                ) =>
-                                                    setSelectedContactId(
-                                                        value
-                                                    )
+                                                onValueChange={
+                                                    setSelectedContactId
                                                 }
                                             >
                                                 <Select.Trigger
@@ -1494,171 +1065,190 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                         <Button
                                             type="button"
                                             variant="solid"
-                                            onClick={handleSendOtpClick}
-                                            loading={isSendingOtp}
-                                            disabled={isSendingOtp}
-                                            style={{ width: "100%" }}
+                                            onClick={
+                                                handleSendOtpClick
+                                            }
+                                            loading={
+                                                isSendingOtp
+                                            }
+                                            disabled={
+                                                isSendingOtp
+                                            }
+                                            style={{
+                                                width: "100%",
+                                            }}
                                         >
-                                            <Flex align="center" gap="2" justify="center">
+                                            <Flex
+                                                align="center"
+                                                gap="2"
+                                                justify="center"
+                                            >
                                                 <Send className="w-4 h-4" />
-                                                <Text>Send OTP</Text>
+
+                                                <Text>
+                                                    Send OTP
+                                                </Text>
                                             </Flex>
                                         </Button>
                                     </motion.div>
                                 )}
 
-                            {/* =================================================
-                                VIEW 3 - ENTER OTP
-                            ================================================= */}
+                            {/* OTP */}
 
-                            {viewMode === "ENTER_OTP" && (
-                                <motion.div
-                                    key="enter-otp-view"
-                                    initial={{
-                                        opacity: 0,
-                                        x: 20,
-                                    }}
-                                    animate={{
-                                        opacity: 1,
-                                        x: 0,
-                                    }}
-                                    exit={{
-                                        opacity: 0,
-                                        x: -20,
-                                    }}
-                                    transition={{
-                                        duration: 0.2,
-                                    }}
-                                    className="space-y-4"
-                                >
-                                    <Box className="p-2.5 text-center">
-                                        <Text size="2">
-                                            OTP sent successfully
-                                            to{" "}
-                                            <strong>
-                                                {sentContactLabel ||
-                                                    "your contact"}
-                                            </strong>
-                                            .
-                                        </Text>
-                                    </Box>
-
-                                    <Box>
-                                        <Box mb="2">
-                                            <Text
-                                                as="label"
-                                                size="2"
-                                                weight="medium"
-                                                htmlFor="otpCode"
-                                            >
-                                                Enter OTP
+                            {viewMode ===
+                                "ENTER_OTP" && (
+                                    <motion.div
+                                        key="enter-otp-view"
+                                        initial={{
+                                            opacity: 0,
+                                            x: 20,
+                                        }}
+                                        animate={{
+                                            opacity: 1,
+                                            x: 0,
+                                        }}
+                                        exit={{
+                                            opacity: 0,
+                                            x: -20,
+                                        }}
+                                        transition={{
+                                            duration: 0.2,
+                                        }}
+                                        className="space-y-4"
+                                    >
+                                        <Box className="p-2.5 text-center">
+                                            <Text size="2">
+                                                OTP sent successfully
+                                                to{" "}
+                                                <strong>
+                                                    {sentContactLabel ||
+                                                        "your contact"}
+                                                </strong>
+                                                .
                                             </Text>
                                         </Box>
 
-                                        <TextField.Root
-                                            id="otpCode"
-                                            type="text"
-                                            placeholder="Enter 6-digit OTP"
-                                            maxLength={6}
-                                            {...register(
-                                                "otpCode",
-                                                {
-                                                    required:
-                                                        viewMode ===
-                                                            "ENTER_OTP"
-                                                            ? "OTP is required"
-                                                            : false,
-                                                    minLength: {
-                                                        value: 6,
-                                                        message:
-                                                            "OTP must be 6 digits",
-                                                    },
-                                                }
-                                            )}
-                                        >
-                                            <TextField.Slot>
-                                                <ShieldCheck className="w-5 h-5 text-indigo-500" />
-                                            </TextField.Slot>
-                                        </TextField.Root>
-
-                                        {errors.otpCode && (
-                                            <Flex
-                                                align="center"
-                                                gap="1"
-                                                mt="1.5"
-                                                className="text-red-500"
-                                            >
-                                                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-
+                                        <Box>
+                                            <Box mb="2">
                                                 <Text
+                                                    as="label"
                                                     size="2"
-                                                    color="red"
+                                                    weight="medium"
+                                                    htmlFor="otpCode"
                                                 >
-                                                    {
-                                                        errors
-                                                            .otpCode
-                                                            ?.message as string
-                                                    }
+                                                    Enter OTP
                                                 </Text>
-                                            </Flex>
-                                        )}
-                                    </Box>
+                                            </Box>
 
-                                    <Flex
-                                        justify="between"
-                                        align="center"
-                                    >
+                                            <TextField.Root
+                                                id="otpCode"
+                                                type="text"
+                                                placeholder="Enter verification code"
+                                                {...register("otpCode", {
+                                                    required:
+                                                        viewMode === "ENTER_OTP"
+                                                            ? "Verification code is required"
+                                                            : false,
+                                                })}
+                                            >
+                                                <TextField.Slot>
+                                                    <ShieldCheck className="w-5 h-5 text-indigo-500" />
+                                                </TextField.Slot>
+                                            </TextField.Root>
+
+                                            {errors.otpCode && (
+                                                <Flex
+                                                    align="center"
+                                                    gap="1"
+                                                    mt="1.5"
+                                                    className="text-red-500"
+                                                >
+                                                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+
+                                                    <Text
+                                                        size="2"
+                                                        color="red"
+                                                    >
+                                                        {
+                                                            errors
+                                                                .otpCode
+                                                                ?.message as string
+                                                        }
+                                                    </Text>
+                                                </Flex>
+                                            )}
+                                        </Box>
+
+                                        <Flex
+                                            justify="between"
+                                            align="center"
+                                        >
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                color="gray"
+                                                size="1"
+                                                ml="2"
+                                                onClick={() =>
+                                                    setViewMode(
+                                                        "SELECT_CONTACT"
+                                                    )
+                                                }
+                                                disabled={
+                                                    isVerifyingOtp ||
+                                                    isSendingOtp
+                                                }
+                                            >
+                                                Change Contact
+                                                Method
+                                            </Button>
+
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                color="sky"
+                                                size="1"
+                                                mr="2"
+                                                onClick={
+                                                    handleSendOtpClick
+                                                }
+                                                loading={
+                                                    isSendingOtp
+                                                }
+                                                disabled={
+                                                    isSendingOtp ||
+                                                    isVerifyingOtp
+                                                }
+                                            >
+                                                Resend OTP
+                                            </Button>
+                                        </Flex>
+
                                         <Button
                                             type="button"
-                                            variant="ghost"
-                                            color="gray"
-                                            size="1"
-                                            ml="2"
-                                            onClick={() =>
-                                                setViewMode(
-                                                    "SELECT_CONTACT"
-                                                )
+                                            onClick={
+                                                handleOtpVerifySubmit
                                             }
+                                            loading={
+                                                isVerifyingOtp ||
+                                                loadingState ===
+                                                "verifyOtp"
+                                            }
+                                            disabled={
+                                                isVerifyingOtp ||
+                                                loadingState ===
+                                                "verifyOtp"
+                                            }
+                                            style={{
+                                                width: "100%",
+                                            }}
                                         >
-                                            Change Contact
-                                            Method
+                                            Verify
                                         </Button>
+                                    </motion.div>
+                                )}
 
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            color="sky"
-                                            size="1"
-                                            mr="2"
-                                            onClick={handleSendOtpClick}
-                                            loading={isSendingOtp}
-                                            disabled={isSendingOtp}
-                                        >
-                                            Resend OTP
-                                        </Button>
-                                    </Flex>
-
-                                    <Button
-                                        type="button"
-                                        onClick={
-                                            handleOtpVerifySubmit
-                                        }
-                                        loading={
-                                            loadingState ===
-                                            "verifyOtp"
-                                        }
-                                        style={{
-                                            width: "100%",
-                                        }}
-                                    >
-                                        Verify
-                                    </Button>
-                                </motion.div>
-                            )}
-
-                            {/* =================================================
-                                VIEW 4 - SET NEW PASSWORD
-                            ================================================= */}
+                            {/* SET PASSWORD */}
 
                             {viewMode ===
                                 "SET_PASSWORD" && (
@@ -1700,6 +1290,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                                     {
                                                         required:
                                                             "New password is required",
+
                                                         minLength: {
                                                             value: 8,
                                                             message:
@@ -1802,6 +1393,12 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                                 handleResetPassword
                                             }
                                             loading={
+                                                isResettingPassword ||
+                                                loadingState ===
+                                                "resetPassword"
+                                            }
+                                            disabled={
+                                                isResettingPassword ||
                                                 loadingState ===
                                                 "resetPassword"
                                             }

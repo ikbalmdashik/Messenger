@@ -1,1060 +1,1206 @@
-// "use client"
-
-// import Routes from "@/app/routes/routes"
-// import API_ENDPOINTS from "@/app/routes/api"
-// import axios from "axios"
-// import { useRouter } from "next/navigation"
-// import { useState, useCallback, useMemo, useEffect } from "react"
-// import { useForm, FormProvider } from "react-hook-form"
-// import { motion, AnimatePresence } from "framer-motion"
-// import { IoChevronBackOutline, IoSend } from "react-icons/io5"
-// import { FaAngleRight } from "react-icons/fa"
-// import { MdClose } from "react-icons/md"
-// import { Mail, AlertCircle, MessageCircle, ShieldAlert, ArrowLeft, RefreshCw, CheckCircle2 } from "lucide-react"
-
-// import { Button, Card, Flex, Text, Box, TextField, AlertDialog, IconButton, Badge, Callout } from "@radix-ui/themes"
-// import { PasswordModal } from "@/app/components/auth/PasswordModal"
-
-// type FormData = {
-//     email: string
-//     password: string
-// }
-
-// type Step = 1 | 5
-
-// type Notification = {
-//     type: "success" | "error"
-//     message: string
-// } | null
-
-// const STEP_CONFIG = {
-//     HEADERS: {
-//         1: { title: "Enter your Email", color: undefined },
-//         5: { title: "Verification Required", color: undefined },
-//     } as const,
-//     PREVIOUS_STEP: {
-//         5: 1
-//     } as Record<Exclude<Step, 1>, Step>
-// } as const
-
-// const stepVariants = {
-//     hidden: { opacity: 0, x: 50 },
-//     visible: { opacity: 1, x: 0, transition: { duration: 0.3 } },
-//     exit: { opacity: 0, x: -50, transition: { duration: 0.3 } },
-// }
-
-// const MultiStepLogin = () => {
-//     const router = useRouter()
-//     const [step, setStep] = useState<Step>(1)
-//     const [email, setEmail] = useState("")
-//     const [loadingButton, setLoadingButton] = useState<string | null>(null)
-
-//     // Auth state holder populated on password verification
-//     const [authPayload, setAuthPayload] = useState<{ userId: string; isEmailVerified: boolean; email: string } | null>(null)
-
-//     // Notification banner state
-//     const [notification, setNotification] = useState<Notification>(null)
-
-//     // Cooldown timer state for verification resends
-//     const [resendCooldown, setResendCooldown] = useState(0)
-
-//     // Alert Dialog & Error States
-//     const [isNotFoundAlertOpen, setIsNotFoundAlertOpen] = useState(false)
-//     const [isPasswordAlertOpen, setIsPasswordAlertOpen] = useState(false)
-//     const [passwordError, setPasswordError] = useState<string | null>(null)
-//     const [, setFailedAttempts] = useState(0)
-
-//     const methods = useForm<FormData>({ mode: "onChange" })
-//     const { register, getValues, trigger, setValue, formState: { errors } } = methods
-
-//     // Timer countdown effect
-//     useEffect(() => {
-//         if (resendCooldown <= 0) return
-//         const timer = setInterval(() => {
-//             setResendCooldown((prev) => prev - 1)
-//         }, 1000)
-//         return () => clearInterval(timer)
-//     }, [resendCooldown])
-
-//     // API calls
-//     const checkEmailExists = useCallback(async (emailInput: string) => {
-//         return (await axios.post(API_ENDPOINTS.IsEmailExist, { email: emailInput })).data
-//     }, [])
-
-//     const authLogin = useCallback(async (emailInput: string, passwordInput: string) => {
-//         return await axios.post(API_ENDPOINTS.LoginAuth, { email: emailInput, password: passwordInput })
-//     }, [])
-
-//     const sendVerificationLink = useCallback(async (emailInput: string, type: string) => {
-//         return await axios.post(API_ENDPOINTS.SendLink, { email: emailInput, type: type })
-//     }, [])
-
-//     // Step 1: Check Email
-//     const handleEmailStep = useCallback(async () => {
-//         const valid = await trigger("email")
-//         const inputEmail = getValues("email")
-//         if (!valid) return
-
-//         setLoadingButton("emailStep")
-//         setEmail(inputEmail)
-//         setPasswordError(null)
-//         setNotification(null)
-//         setFailedAttempts(0)
-
-//         try {
-//             const isEmailExist = await checkEmailExists(inputEmail)
-//             if (isEmailExist) {
-//                 setIsPasswordAlertOpen(true)
-//             } else {
-//                 setIsNotFoundAlertOpen(true)
-//             }
-//         } catch (error) {
-//             console.error(error)
-//             setNotification({
-//                 type: "error",
-//                 message: "Network error occurred while checking your email."
-//             })
-//         } finally {
-//             setLoadingButton(null)
-//         }
-//     }, [trigger, getValues, checkEmailExists])
-
-//     // Step 2: Validate Password & Process Post-Login Logic directly
-//     const handleVerifyLogin = useCallback(async (): Promise<boolean> => {
-//         setPasswordError(null)
-
-//         const valid = await trigger("password")
-//         if (!valid) return false
-
-//         const currentEmail = getValues("email")
-//         const currentPassword = getValues("password")
-
-//         if (!currentPassword) return false
-
-//         setLoadingButton("login")
-
-//         try {
-//             const result = await authLogin(currentEmail, currentPassword)
-//             if (result?.data?.userId != null) {
-//                 const userId = `${result.data.userId}`
-//                 const isEmailVerified = !!result.data.isEmailVerified
-//                 const userEmail = result.data.email
-
-//                 setEmail(userEmail)
-//                 setAuthPayload({ userId, isEmailVerified, email: userEmail })
-
-//                 setIsPasswordAlertOpen(false)
-
-//                 if (isEmailVerified) {
-//                     sessionStorage.setItem("loginId", userId)
-//                     router.push(Routes.Chat)
-//                 } else {
-//                     setStep(5)
-//                 }
-//                 return true
-//             } else {
-//                 setPasswordError("Incorrect password. Please verify your details.")
-//                 setFailedAttempts((prev) => prev + 1)
-//                 return false
-//             }
-//         } catch (err) {
-//             console.error(err)
-//             setPasswordError("An unexpected error occurred. Please try again.")
-//             return false
-//         } finally {
-//             setLoadingButton(null)
-//         }
-//     }, [trigger, getValues, authLogin, router])
-
-//     const handleSuccessNextStep = useCallback(() => {
-//         if (!authPayload) return
-
-//         setIsPasswordAlertOpen(false)
-
-//         if (authPayload.isEmailVerified) {
-//             sessionStorage.setItem("loginId", authPayload.userId)
-//             router.push(Routes.Chat)
-//         } else {
-//             setStep(5)
-//         }
-//     }, [authPayload, router])
-
-//     // Send Email Verification Link (Inline Callout Response)
-//     const handleSendVerification = useCallback(async () => {
-//         if (resendCooldown > 0) return
-//         setLoadingButton("sendVerification")
-//         setNotification(null)
-
-//         try {
-//             await sendVerificationLink(email, "VERIFY_EMAIL")
-//             setResendCooldown(60)
-//             setNotification({
-//                 type: "success",
-//                 message: `Verification link successfully sent to ${email}. Please check your inbox.`
-//             })
-//         } catch (error) {
-//             console.error(error)
-//             setNotification({
-//                 type: "error",
-//                 message: "Failed to send verification link. Please try again."
-//             })
-//         } finally {
-//             setLoadingButton(null)
-//         }
-//     }, [email, resendCooldown, sendVerificationLink])
-
-//     // Send Password Reset Link (Inline Callout Response)
-//     const handlePasswordReset = useCallback(async () => {
-//         setLoadingButton("passwordReset")
-//         setNotification(null)
-
-//         const targetEmail = email || getValues("email")
-
-//         try {
-//             await sendVerificationLink(targetEmail, "RESET_PASSWORD")
-//             setIsPasswordAlertOpen(false)
-//             setNotification({
-//                 type: "success",
-//                 message: `Password reset link sent to ${targetEmail}. Please check your inbox.`
-//             })
-//         } catch (error) {
-//             console.error(error)
-//             setNotification({
-//                 type: "error",
-//                 message: "Failed to send password reset link. Please try again."
-//             })
-//         } finally {
-//             setLoadingButton(null)
-//         }
-//     }, [email, getValues, sendVerificationLink])
-
-//     const goToPreviousStep = useCallback(() => {
-//         const prevStep = STEP_CONFIG.PREVIOUS_STEP[step as Exclude<Step, 1>]
-//         if (prevStep) {
-//             setNotification(null)
-//             setStep(prevStep)
-//         }
-//     }, [step])
-
-//     const goToRegister = useCallback(() => {
-//         setLoadingButton("gotoreg")
-//         router.push(Routes.Register)
-//     }, [router])
-
-//     // Modern Step 5: Email Not Verified Component
-//     const renderUnverifiedStep = () => (
-//         <motion.div key="step5-content" variants={stepVariants} initial="hidden" animate="visible" exit="exit" className="b">
-//             <Flex direction="column" align="center" gap="4" className="text-center">
-//                 <Box className="relative mt-4">
-//                     <Box className="absolute -inset-1 rounded-full bg-amber-500/20 blur-md animate-pulse" />
-//                     <Flex align="center" justify="center" className="relative w-16 h-16 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
-//                         <ShieldAlert className="w-8 h-8 text-amber-500" />
-//                     </Flex>
-//                 </Box>
-
-//                 <Box className="space-y-1">
-//                     <Badge color="amber" variant="soft" radius="full" size="2">
-//                         Account Unverified
-//                     </Badge>
-//                     <Text as="p" size="2" color="gray" className="mt-2 max-w-xs mx-auto">
-//                         Your account requires email verification before accessing the system dashboard.
-//                     </Text>
-//                 </Box>
-
-//                 <Box className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded p-3">
-//                     <Flex align="center" justify="between">
-//                         <Flex align="center" gap="2" className="overflow-hidden">
-//                             <Mail className="w-4 h-4 text-slate-400 flex-shrink-0" />
-//                             <Text size="2" weight="bold" className="truncate text-slate-700 dark:text-slate-200">
-//                                 {email || getValues("email")}
-//                             </Text>
-//                         </Flex>
-//                         <Badge color="amber" variant="surface" size="1">Pending</Badge>
-//                     </Flex>
-//                 </Box>
-//             </Flex>
-//         </motion.div>
-//     )
-
-//     // Memoized step content
-//     const stepContent = useMemo(() => {
-//         switch (step) {
-//             case 1:
-//                 return (
-//                     <motion.div key="step1-content" variants={stepVariants} initial="hidden" animate="visible" exit="exit">
-//                         <Box mb="2">
-//                             <Text as="label" size="2" weight="medium" htmlFor="email">
-//                                 Email
-//                             </Text>
-//                         </Box>
-//                         <TextField.Root
-//                             id="email"
-//                             type="text"
-//                             placeholder="example@company.com"
-//                             {...register("email", {
-//                                 required: "Email is required",
-//                                 pattern: { value: /\S+@\S+\.\S+/, message: "Enter a valid email" }
-//                             })}
-//                         >
-//                             <TextField.Slot>
-//                                 <Mail className="w-5 h-5 text-gray-400" />
-//                             </TextField.Slot>
-//                         </TextField.Root>
-//                         {errors.email && (
-//                             <Flex align="center" gap="1" mt="1">
-//                                 <AlertCircle className="w-4 h-4 text-red-500" />
-//                                 <Text size="2" color="red">{errors.email.message}</Text>
-//                             </Flex>
-//                         )}
-//                     </motion.div>
-//                 )
-//             case 5:
-//                 return renderUnverifiedStep()
-//             default:
-//                 return null
-//         }
-//     }, [step, errors, register])
-
-//     const footerButtons = useMemo(() => {
-//         switch (step) {
-//             case 1:
-//                 return (
-//                     <Box>
-//                         <Button
-//                             type="button"
-//                             size="2"
-//                             onClick={handleEmailStep}
-//                             loading={loadingButton === "emailStep"}
-//                             style={{ width: "100%" }}
-//                         >
-//                             <Flex align="center" gap="2" justify="center">
-//                                 Continue <FaAngleRight />
-//                             </Flex>
-//                         </Button>
-//                     </Box>
-//                 )
-
-//             case 5:
-//                 return (
-//                     <Flex direction="column" gap="2" width="100%" align="stretch" className="">
-//                         <Button
-//                             type="button"
-//                             onClick={handleSendVerification}
-//                             loading={loadingButton === "sendVerification"}
-//                             disabled={resendCooldown > 0}
-//                         >
-//                             {resendCooldown > 0 ? (
-//                                 <Flex align="center" gap="2" justify="center">
-//                                     <RefreshCw className="w-4 h-4 animate-spin" />
-//                                     Resend in {resendCooldown}s
-//                                 </Flex>
-//                             ) : (
-//                                 <Flex align="center" gap="2" justify="center">
-//                                     <IoSend className="w-4 h-4" /> Resend Verification Link
-//                                 </Flex>
-//                             )}
-//                         </Button>
-
-//                         <Button
-//                             type="button"
-//                             variant="outline"
-//                             color="gray"
-//                             size="2"
-//                             onClick={() => {
-//                                 setNotification(null)
-//                                 setStep(1)
-//                             }}
-//                         >
-//                             <Flex align="center" gap="2" justify="center">
-//                                 <ArrowLeft className="w-4 h-4" /> Use Different Account
-//                             </Flex>
-//                         </Button>
-//                     </Flex>
-//                 )
-
-//             default:
-//                 return null
-//         }
-//     }, [step, loadingButton, handleEmailStep, handleSendVerification, resendCooldown])
-
-//     return (
-//         <FormProvider {...methods}>
-//             <Flex align="center" justify="center" className="min-h-[100dvh] p-4">
-//                 <Box className="w-full max-w-md">
-//                     <Flex align="center" justify="center" gap="3" mb="6">
-//                         <MessageCircle className="w-8 h-8 text-sky-500" />
-//                         <Text size="8" weight="bold" className="bg-gradient-to-r from-sky-500 to-indigo-500 bg-clip-text text-transparent">
-//                             Messenger
-//                         </Text>
-//                     </Flex>
-
-//                     <form onSubmit={(e) => { e.preventDefault(); handleEmailStep(); }}>
-//                         <Card variant="ghost" className="shadow-xl">
-//                             <Box position="relative" className="text-center pt-6">
-//                                 <AnimatePresence mode="wait">
-//                                     <motion.div
-//                                         key={`header-${step}`}
-//                                         initial={{ opacity: 0, y: -10 }}
-//                                         animate={{ opacity: 1, y: 0 }}
-//                                         exit={{ opacity: 0, y: 10 }}
-//                                     >
-//                                         <Text as="div" size="6" weight="bold" color={STEP_CONFIG.HEADERS[step].color}>
-//                                             {STEP_CONFIG.HEADERS[step].title}
-//                                         </Text>
-//                                     </motion.div>
-//                                 </AnimatePresence>
-//                             </Box>
-
-//                             <Box px="4" className="">
-//                                 {/* Radix UI Callout for Inline Notifications */}
-//                                 <AnimatePresence>
-//                                     {notification && (
-//                                         <motion.div
-//                                             initial={{ opacity: 0, y: -10 }}
-//                                             animate={{ opacity: 1, y: 0 }}
-//                                             exit={{ opacity: 0, y: -10 }}
-//                                             transition={{ duration: 0.2 }}
-//                                             className="mt-4"
-//                                         >
-//                                             <Callout.Root
-//                                                 color={notification.type === "success" ? "green" : "red"}
-//                                                 size="1"
-//                                                 variant="soft"
-//                                             >
-//                                                 <Callout.Icon className="flex items-center justify-center my-auto">
-//                                                     {notification.type === "success" ? (
-//                                                         <CheckCircle2 className="w-4 h-4" />
-//                                                     ) : (
-//                                                         <AlertCircle className="w-4 h-4" />
-//                                                     )}
-//                                                 </Callout.Icon>
-//                                                 <Callout.Text size="2">
-//                                                     {notification.message}
-//                                                 </Callout.Text>
-//                                             </Callout.Root>
-//                                         </motion.div>
-//                                     )}
-//                                 </AnimatePresence>
-
-//                                 <AnimatePresence mode="wait">
-//                                     {stepContent}
-//                                 </AnimatePresence>
-//                             </Box>
-
-//                             <Box px="4" pb="" width="100%" mt="2">
-//                                 {footerButtons}
-//                             </Box>
-//                         </Card>
-//                     </form>
-
-//                     {/* Reusable Password Modal */}
-//                     <PasswordModal
-//                         isOpen={isPasswordAlertOpen}
-//                         onOpenChange={(open) => {
-//                             setIsPasswordAlertOpen(open)
-//                             if (!open) {
-//                                 setPasswordError(null)
-//                                 setValue("password", "")
-//                             }
-//                         }}
-//                         subtitleAccount={getValues("email")}
-//                         passwordError={passwordError}
-//                         loadingState={loadingButton}
-//                         onSubmitPassword={handleVerifyLogin}
-//                         onSuccessNext={handleSuccessNextStep}
-//                         onPasswordReset={handlePasswordReset}
-//                         onSwitchAccount={() => {
-//                             setValue("password", "")
-//                             setPasswordError(null)
-//                             setIsPasswordAlertOpen(false)
-//                         }}
-//                     />
-
-//                     {/* Radix UI AlertDialog for Email Not Found */}
-//                     <AlertDialog.Root open={isNotFoundAlertOpen} onOpenChange={setIsNotFoundAlertOpen}>
-//                         <AlertDialog.Content maxWidth="400px" className="relative p-6">
-//                             <Box className="absolute top-3 right-3">
-//                                 <AlertDialog.Cancel>
-//                                     <IconButton variant="ghost" color="gray" type="button" size="2">
-//                                         <MdClose className="w-5 h-5" />
-//                                     </IconButton>
-//                                 </AlertDialog.Cancel>
-//                             </Box>
-
-//                             <Flex direction="column" align="center" className="text-center pt-2">
-//                                 <AlertDialog.Title className="text-center">
-//                                     <Flex align="center" justify="center" gap="2" className="text-red-600">
-//                                         <AlertCircle className="w-5 h-5" />
-//                                         Email Not Found
-//                                     </Flex>
-//                                 </AlertDialog.Title>
-
-//                                 <AlertDialog.Description size="2" my="4" className="text-center">
-//                                     We couldn't find an account associated with <strong>{getValues("email")}</strong>. Would you like to register a new account?
-//                                 </AlertDialog.Description>
-
-//                                 <Flex gap="3" width="100%" mt="2">
-//                                     <AlertDialog.Cancel style={{ flex: 1 }}>
-//                                         <Button
-//                                             variant="soft"
-//                                             color="gray"
-//                                             type="button"
-//                                             style={{ width: "100%" }}
-//                                         >
-//                                             Go Back
-//                                         </Button>
-//                                     </AlertDialog.Cancel>
-
-//                                     <Button
-//                                         type="button"
-//                                         onClick={goToRegister}
-//                                         loading={loadingButton === "gotoreg"}
-//                                         style={{ flex: 1 }}
-//                                     >
-//                                         Go to Register
-//                                     </Button>
-//                                 </Flex>
-//                             </Flex>
-//                         </AlertDialog.Content>
-//                     </AlertDialog.Root>
-//                 </Box>
-//             </Flex>
-//         </FormProvider>
-//     )
-// }
-
-// export default MultiStepLogin
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"use client"
-
-import Routes from "@/app/routes/routes"
-import API_ENDPOINTS from "@/app/routes/api"
-import axios from "axios"
-import { useRouter } from "next/navigation"
-import { useState, useCallback, useMemo, useEffect } from "react"
-import { useForm, FormProvider } from "react-hook-form"
-import { motion, AnimatePresence } from "framer-motion"
-import { IoSend } from "react-icons/io5"
-import { FaAngleRight } from "react-icons/fa"
-import { MdClose } from "react-icons/md"
-import { Mail, AlertCircle, MessageCircle, ShieldAlert, ArrowLeft, RefreshCw, CheckCircle2 } from "lucide-react"
-
-import { Button, Card, Flex, Text, Box, TextField, AlertDialog, IconButton, Badge, Callout } from "@radix-ui/themes"
-import { PasswordModal, ContactOption } from "@/app/components/auth/PasswordModal"
+"use client";
+
+import Routes from "@/app/routes/routes";
+import API_ENDPOINTS from "@/app/routes/api";
+
+import axios from "axios";
+import { useRouter } from "next/navigation";
+
+import {
+    useState,
+    useCallback,
+    useMemo,
+    useEffect,
+} from "react";
+
+import {
+    useForm,
+    FormProvider,
+} from "react-hook-form";
+
+import {
+    motion,
+    AnimatePresence,
+} from "framer-motion";
+
+import { IoSend } from "react-icons/io5";
+import { FaAngleRight } from "react-icons/fa";
+import { MdClose } from "react-icons/md";
+
+import {
+    Mail,
+    AlertCircle,
+    MessageCircle,
+    ShieldAlert,
+    ArrowLeft,
+    RefreshCw,
+    CheckCircle2,
+} from "lucide-react";
+
+import {
+    Button,
+    Card,
+    Flex,
+    Text,
+    Box,
+    TextField,
+    AlertDialog,
+    IconButton,
+    Badge,
+    Callout,
+} from "@radix-ui/themes";
+
+import {
+    PasswordModal,
+    ContactOption,
+} from "@/app/components/auth/PasswordModal";
 
 type FormData = {
-    email: string
-    password: string
-    otpCode?: string
-    newPassword?: string
-    confirmPassword?: string
-}
+    email: string;
+    password: string;
 
-type Step = 1 | 5
+    otpCode?: string;
+
+    newPassword?: string;
+    confirmPassword?: string;
+};
+
+type Step = 1 | 5;
 
 type Notification = {
-    type: "success" | "error"
-    message: string
-} | null
+    type: "success" | "error";
+    message: string;
+} | null;
 
 const STEP_CONFIG = {
     HEADERS: {
-        1: { title: "Enter your Email", color: undefined },
-        5: { title: "Verification Required", color: undefined },
+        1: {
+            title: "Enter your Email",
+            color: undefined,
+        },
+
+        5: {
+            title: "Verification Required",
+            color: undefined,
+        },
     } as const,
+
     PREVIOUS_STEP: {
-        5: 1
-    } as Record<Exclude<Step, 1>, Step>
-} as const
+        5: 1,
+    } as Record<Exclude<Step, 1>, Step>,
+} as const;
 
 const stepVariants = {
-    hidden: { opacity: 0, x: 50 },
-    visible: { opacity: 1, x: 0, transition: { duration: 0.3 } },
-    exit: { opacity: 0, x: -50, transition: { duration: 0.3 } },
-}
+    hidden: {
+        opacity: 0,
+        x: 50,
+    },
+
+    visible: {
+        opacity: 1,
+        x: 0,
+        transition: {
+            duration: 0.3,
+        },
+    },
+
+    exit: {
+        opacity: 0,
+        x: -50,
+        transition: {
+            duration: 0.3,
+        },
+    },
+};
 
 const MultiStepLogin = () => {
-    const router = useRouter()
-    const [step, setStep] = useState<Step>(1)
-    const [email, setEmail] = useState("")
-    const [loadingButton, setLoadingButton] = useState<string | null>(null)
+    const router = useRouter();
 
-    // Auth state holder populated on password/OTP verification
-    const [authPayload, setAuthPayload] = useState<{ userId: string; isEmailVerified: boolean; email: string } | null>(null)
+    const [step, setStep] =
+        useState<Step>(1);
 
-    // Notification banner state
-    const [notification, setNotification] = useState<Notification>(null)
+    const [email, setEmail] =
+        useState("");
 
-    // Cooldown timer state for verification resends
-    const [resendCooldown, setResendCooldown] = useState(0)
+    const [loadingButton, setLoadingButton] =
+        useState<string | null>(null);
 
-    // Alert Dialog & Error States
-    const [isNotFoundAlertOpen, setIsNotFoundAlertOpen] = useState(false)
-    const [isPasswordAlertOpen, setIsPasswordAlertOpen] = useState(false)
-    const [passwordError, setPasswordError] = useState<string | null>(null)
+    /*
+     * Auth state populated after password login.
+     */
+    const [authPayload, setAuthPayload] =
+        useState<{
+            userId: string;
+            isEmailVerified: boolean;
+            email: string;
+        } | null>(null);
 
-    const methods = useForm<FormData>({ mode: "onChange" })
-    const { register, getValues, trigger, setValue, formState: { errors } } = methods
+    const [notification, setNotification] =
+        useState<Notification>(null);
 
-    // Contact options derived from email for OTP fallback inside PasswordModal
-    const contactOptions = useMemo<ContactOption[]>(() => {
-        const currentEmail = email || getValues("email")
-        return [
-            {
-                id: "1",
-                label: `Email (${currentEmail})`,
-                type: "email",
-                value: currentEmail
-            }
-        ]
-    }, [email, getValues])
+    const [resendCooldown, setResendCooldown] =
+        useState(0);
 
-    // Timer countdown effect
+    /*
+     * Dialog states
+     */
+    const [
+        isNotFoundAlertOpen,
+        setIsNotFoundAlertOpen,
+    ] = useState(false);
+
+    const [
+        isPasswordAlertOpen,
+        setIsPasswordAlertOpen,
+    ] = useState(false);
+
+    const [passwordError, setPasswordError] =
+        useState<string | null>(null);
+
+    /*
+     * React Hook Form
+     */
+    const methods = useForm<FormData>({
+        mode: "onChange",
+    });
+
+    const {
+        register,
+        getValues,
+        trigger,
+        setValue,
+        formState: { errors },
+    } = methods;
+
+    /*
+     * Contact options for PasswordModal.
+     */
+    const contactOptions =
+        useMemo<ContactOption[]>(() => {
+            const currentEmail =
+                email || getValues("email");
+
+            return [
+                {
+                    id: "1",
+                    label: `Email (${currentEmail})`,
+                    type: "email",
+                    value: currentEmail,
+                },
+            ];
+        }, [email, getValues]);
+
+    /*
+     * Resend cooldown.
+     */
     useEffect(() => {
-        if (resendCooldown <= 0) return
+        if (resendCooldown <= 0) return;
+
         const timer = setInterval(() => {
-            setResendCooldown((prev) => prev - 1)
-        }, 1000)
-        return () => clearInterval(timer)
-    }, [resendCooldown])
+            setResendCooldown(
+                (prev) => prev - 1
+            );
+        }, 1000);
 
-    // API calls
-    const checkEmailExists = useCallback(async (emailInput: string) => {
-        return (await axios.post(API_ENDPOINTS.IsEmailExist, { email: emailInput })).data
-    }, [])
+        return () =>
+            clearInterval(timer);
+    }, [resendCooldown]);
 
-    const authLogin = useCallback(async (emailInput: string, passwordInput: string) => {
-        return await axios.post(API_ENDPOINTS.LoginAuth, { email: emailInput, password: passwordInput })
-    }, [])
+    /*
+     * ================================
+     * API
+     * ================================
+     */
 
-    const sendVerificationLink = useCallback(async (emailInput: string, type: string) => {
-        return await axios.post(API_ENDPOINTS.SendLink, { email: emailInput, type: type })
-    }, [])
+    const checkEmailExists =
+        useCallback(
+            async (emailInput: string) => {
+                const response =
+                    await axios.post(
+                        API_ENDPOINTS.IsEmailExist,
+                        {
+                            email: emailInput,
+                        }
+                    );
 
-    // Step 1: Check Email
-    const handleEmailStep = useCallback(async () => {
-        const valid = await trigger("email")
-        const inputEmail = getValues("email")
-        if (!valid) return
+                return response.data;
+            },
+            []
+        );
 
-        setLoadingButton("emailStep")
-        setEmail(inputEmail)
-        setPasswordError(null)
-        setNotification(null)
+    const authLogin =
+        useCallback(
+            async (
+                emailInput: string,
+                passwordInput: string
+            ) => {
+                return await axios.post(
+                    API_ENDPOINTS.LoginAuth,
+                    {
+                        email: emailInput,
+                        password: passwordInput,
+                    }
+                );
+            },
+            []
+        );
 
-        try {
-            const isEmailExist = await checkEmailExists(inputEmail)
-            if (isEmailExist) {
-                setIsPasswordAlertOpen(true)
-            } else {
-                setIsNotFoundAlertOpen(true)
-            }
-        } catch (error) {
-            console.error(error)
-            setNotification({
-                type: "error",
-                message: "Network error occurred while checking your email."
-            })
-        } finally {
-            setLoadingButton(null)
-        }
-    }, [trigger, getValues, checkEmailExists])
+    const sendVerificationLink =
+        useCallback(
+            async (
+                emailInput: string,
+                type: string
+            ) => {
+                return await axios.post(
+                    API_ENDPOINTS.SendLink,
+                    {
+                        email: emailInput,
+                        type,
+                    }
+                );
+            },
+            []
+        );
 
-    // Step 2: Validate Password via Modal
-    const handleVerifyLogin = useCallback(async (): Promise<boolean> => {
-        setPasswordError(null)
+    /*
+     * ================================
+     * STEP 1
+     * ================================
+     */
 
-        const valid = await trigger("password")
-        if (!valid) return false
+    const handleEmailStep =
+        useCallback(async () => {
+            const valid =
+                await trigger("email");
 
-        const currentEmail = email || getValues("email")
-        const currentPassword = getValues("password")
+            if (!valid) return;
 
-        if (!currentPassword) return false
+            const inputEmail =
+                getValues("email");
 
-        setLoadingButton("login")
+            setLoadingButton("emailStep");
 
-        try {
-            const result = await authLogin(currentEmail, currentPassword)
-            if (result?.data?.userId != null) {
-                const userId = `${result.data.userId}`
-                const isEmailVerified = !!result.data.isEmailVerified
-                const userEmail = result.data.email || currentEmail
+            setEmail(inputEmail);
 
-                setEmail(userEmail)
-                setAuthPayload({ userId, isEmailVerified, email: userEmail })
+            setPasswordError(null);
+            setNotification(null);
 
-                setIsPasswordAlertOpen(false)
+            try {
+                const isEmailExist =
+                    await checkEmailExists(
+                        inputEmail
+                    );
 
-                if (isEmailVerified) {
-                    sessionStorage.setItem("loginId", userId)
-                    router.push(Routes.Chat)
+                if (isEmailExist) {
+                    setIsPasswordAlertOpen(
+                        true
+                    );
                 } else {
-                    setStep(5)
+                    setIsNotFoundAlertOpen(
+                        true
+                    );
                 }
-                return true
-            } else {
-                setPasswordError("Incorrect password. Please verify your details.")
-                return false
+            } catch (error) {
+                console.error(error);
+
+                setNotification({
+                    type: "error",
+                    message:
+                        "Network error occurred while checking your email.",
+                });
+            } finally {
+                setLoadingButton(null);
             }
-        } catch (err: any) {
-            console.error(err)
-            setPasswordError(err?.response?.data?.message || "Incorrect password. Please try again.")
-            return false
-        } finally {
-            setLoadingButton(null)
-        }
-    }, [trigger, email, getValues, authLogin, router])
+        }, [
+            trigger,
+            getValues,
+            checkEmailExists,
+        ]);
 
-    // OTP Resend/Send logic for Modal
-    const handleSendOtp = useCallback(async (selectedContact: ContactOption) => {
-        setLoadingButton("sendOtp")
-        try {
-            await sendVerificationLink(selectedContact.value, "VERIFY_EMAIL")
-        } finally {
-            setLoadingButton(null)
-        }
-    }, [sendVerificationLink])
+    /*
+     * ================================
+     * PASSWORD LOGIN
+     * ================================
+     */
 
-    // OTP Verify logic for Modal
-    const handleVerifyOtp = useCallback(async (): Promise<boolean> => {
-        setLoadingButton("verifyOtp")
-        try {
-            const currentEmail = email || getValues("email")
-            const otpCode = getValues("otpCode")
+    const handleVerifyLogin =
+        useCallback(async (): Promise<boolean> => {
+            setPasswordError(null);
 
-            // Endpoint verification call
-            await axios.post("API_ENDPOINTS.SendLink", {
-                email: currentEmail,
-                otpCode
-            }, { withCredentials: true })
+            const valid =
+                await trigger("password");
 
-            return true
-        } catch (err: any) {
-            console.error(err)
-            return false
-        } finally {
-            setLoadingButton(null)
-        }
-    }, [email, getValues])
+            if (!valid) return false;
 
-    const handleSuccessNextStep = useCallback(() => {
-        setIsPasswordAlertOpen(false)
+            const currentEmail =
+                email || getValues("email");
 
-        if (authPayload?.isEmailVerified) {
-            sessionStorage.setItem("loginId", authPayload.userId)
-            router.push(Routes.Chat)
-        } else {
-            setStep(5)
-        }
-    }, [authPayload, router])
+            const currentPassword =
+                getValues("password");
 
-    // Send Email Verification Link (Step 5 Inline Action)
-    const handleSendVerification = useCallback(async () => {
-        if (resendCooldown > 0) return
-        setLoadingButton("sendVerification")
-        setNotification(null)
+            if (!currentPassword) {
+                return false;
+            }
 
-        try {
-            await sendVerificationLink(email, "VERIFY_EMAIL")
-            setResendCooldown(60)
-            setNotification({
-                type: "success",
-                message: `Verification link successfully sent to ${email}. Please check your inbox.`
-            })
-        } catch (error) {
-            console.error(error)
-            setNotification({
-                type: "error",
-                message: "Failed to send verification link. Please try again."
-            })
-        } finally {
-            setLoadingButton(null)
-        }
-    }, [email, resendCooldown, sendVerificationLink])
+            setLoadingButton("login");
 
-    const goToRegister = useCallback(() => {
-        setLoadingButton("gotoreg")
-        router.push(Routes.Register)
-    }, [router])
+            try {
+                const result =
+                    await authLogin(
+                        currentEmail,
+                        currentPassword
+                    );
 
-    // Modern Step 5: Email Not Verified Component
-    const renderUnverifiedStep = () => (
-        <motion.div key="step5-content" variants={stepVariants} initial="hidden" animate="visible" exit="exit" className="b">
-            <Flex direction="column" align="center" gap="4" className="text-center">
-                <Box className="relative mt-4">
-                    <Box className="absolute -inset-1 rounded-full bg-amber-500/20 blur-md animate-pulse" />
-                    <Flex align="center" justify="center" className="relative w-16 h-16 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
-                        <ShieldAlert className="w-8 h-8 text-amber-500" />
-                    </Flex>
-                </Box>
+                if (
+                    result?.data?.userId != null
+                ) {
+                    const userId =
+                        `${result.data.userId}`;
 
-                <Box className="space-y-1">
-                    <Badge color="amber" variant="soft" radius="full" size="2">
-                        Account Unverified
-                    </Badge>
-                    <Text as="p" size="2" color="gray" className="mt-2 max-w-xs mx-auto">
-                        Your account requires email verification before accessing the system dashboard.
-                    </Text>
-                </Box>
+                    const isEmailVerified =
+                        !!result.data
+                            .isEmailVerified;
 
-                <Box className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded p-3">
-                    <Flex align="center" justify="between">
-                        <Flex align="center" gap="2" className="overflow-hidden">
-                            <Mail className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                            <Text size="2" weight="bold" className="truncate text-slate-700 dark:text-slate-200">
-                                {email || getValues("email")}
-                            </Text>
+                    const userEmail =
+                        result.data.email ||
+                        currentEmail;
+
+                    setEmail(userEmail);
+
+                    setAuthPayload({
+                        userId,
+                        isEmailVerified,
+                        email: userEmail,
+                    });
+
+                    setIsPasswordAlertOpen(
+                        false
+                    );
+
+                    /*
+                     * Verified account
+                     */
+                    if (isEmailVerified) {
+                        sessionStorage.setItem(
+                            "loginId",
+                            userId
+                        );
+
+                        router.push(
+                            Routes.Chat
+                        );
+                    } else {
+                        /*
+                         * Password is correct,
+                         * but email is not verified.
+                         */
+                        setStep(5);
+                    }
+
+                    return true;
+                }
+
+                setPasswordError(
+                    "Incorrect password. Please verify your details."
+                );
+
+                return false;
+            } catch (error: any) {
+                console.error(error);
+
+                setPasswordError(
+                    error?.response?.data
+                        ?.message ||
+                        "Incorrect password. Please try again."
+                );
+
+                return false;
+            } finally {
+                setLoadingButton(null);
+            }
+        }, [
+            trigger,
+            email,
+            getValues,
+            authLogin,
+            router,
+        ]);
+
+    /*
+     * ================================
+     * OTP VERIFIED
+     * ================================
+     *
+     * OTP verification itself proves
+     * ownership of the email.
+     */
+    const handleOtpVerified =
+        useCallback(() => {
+            if (!authPayload) return;
+
+            sessionStorage.setItem(
+                "loginId",
+                authPayload.userId
+            );
+
+            setIsPasswordAlertOpen(
+                false
+            );
+
+            router.push(
+                Routes.Chat
+            );
+        }, [
+            authPayload,
+            router,
+        ]);
+
+    /*
+     * Password login success.
+     *
+     * This is separate from OTP success
+     * because an unverified account must
+     * go to Step 5.
+     */
+    const handleSuccessNextStep =
+        useCallback(() => {
+            setIsPasswordAlertOpen(
+                false
+            );
+
+            if (
+                authPayload?.isEmailVerified
+            ) {
+                sessionStorage.setItem(
+                    "loginId",
+                    authPayload.userId
+                );
+
+                router.push(
+                    Routes.Chat
+                );
+            } else {
+                setStep(5);
+            }
+        }, [
+            authPayload,
+            router,
+        ]);
+
+    /*
+     * ================================
+     * STEP 5
+     * SEND VERIFICATION LINK
+     * ================================
+     */
+
+    const handleSendVerification =
+        useCallback(async () => {
+            if (resendCooldown > 0) {
+                return;
+            }
+
+            const currentEmail =
+                email || getValues("email");
+
+            if (!currentEmail) {
+                setNotification({
+                    type: "error",
+                    message:
+                        "Email address is missing.",
+                });
+
+                return;
+            }
+
+            setLoadingButton(
+                "sendVerification"
+            );
+
+            setNotification(null);
+
+            try {
+                await sendVerificationLink(
+                    currentEmail,
+                    "VERIFY_EMAIL"
+                );
+
+                setResendCooldown(60);
+
+                setNotification({
+                    type: "success",
+                    message:
+                        `Verification link successfully sent to ${currentEmail}. Please check your inbox.`,
+                });
+            } catch (error) {
+                console.error(error);
+
+                setNotification({
+                    type: "error",
+                    message:
+                        "Failed to send verification link. Please try again.",
+                });
+            } finally {
+                setLoadingButton(null);
+            }
+        }, [
+            email,
+            getValues,
+            resendCooldown,
+            sendVerificationLink,
+        ]);
+
+    /*
+     * ================================
+     * REGISTER
+     * ================================
+     */
+
+    const goToRegister =
+        useCallback(() => {
+            setLoadingButton("gotoreg");
+
+            router.push(
+                Routes.Register
+            );
+        }, [router]);
+
+    /*
+     * ================================
+     * STEP 5 UI
+     * ================================
+     */
+
+    const renderUnverifiedStep =
+        () => (
+            <motion.div
+                key="step5-content"
+                variants={stepVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+            >
+                <Flex
+                    direction="column"
+                    align="center"
+                    gap="4"
+                    className="text-center"
+                >
+                    <Box className="relative mt-4">
+                        <Box className="absolute -inset-1 rounded-full bg-amber-500/20 blur-md animate-pulse" />
+
+                        <Flex
+                            align="center"
+                            justify="center"
+                            className="relative w-16 h-16 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800"
+                        >
+                            <ShieldAlert className="w-8 h-8 text-amber-500" />
                         </Flex>
-                        <Badge color="amber" variant="surface" size="1">Pending</Badge>
-                    </Flex>
-                </Box>
-            </Flex>
-        </motion.div>
-    )
-
-    // Step content routing
-    const stepContent = useMemo(() => {
-        switch (step) {
-            case 1:
-                return (
-                    <motion.div key="step1-content" variants={stepVariants} initial="hidden" animate="visible" exit="exit">
-                        <Box mb="2">
-                            <Text as="label" size="2" weight="medium" htmlFor="email">
-                                Email
-                            </Text>
-                        </Box>
-                        <TextField.Root
-                            id="email"
-                            type="text"
-                            placeholder="example@company.com"
-                            {...register("email", {
-                                required: "Email is required",
-                                pattern: { value: /\S+@\S+\.\S+/, message: "Enter a valid email" }
-                            })}
-                        >
-                            <TextField.Slot>
-                                <Mail className="w-5 h-5 text-gray-400" />
-                            </TextField.Slot>
-                        </TextField.Root>
-                        {errors.email && (
-                            <Flex align="center" gap="1" mt="1">
-                                <AlertCircle className="w-4 h-4 text-red-500" />
-                                <Text size="2" color="red">{errors.email.message}</Text>
-                            </Flex>
-                        )}
-                    </motion.div>
-                )
-            case 5:
-                return renderUnverifiedStep()
-            default:
-                return null
-        }
-    }, [step, errors, register])
-
-    const footerButtons = useMemo(() => {
-        switch (step) {
-            case 1:
-                return (
-                    <Box>
-                        <Button
-                            type="button"
-                            size="2"
-                            onClick={handleEmailStep}
-                            loading={loadingButton === "emailStep"}
-                            style={{ width: "100%" }}
-                        >
-                            <Flex align="center" gap="2" justify="center">
-                                Continue <FaAngleRight />
-                            </Flex>
-                        </Button>
                     </Box>
-                )
 
-            case 5:
-                return (
-                    <Flex direction="column" gap="2" width="100%" align="stretch">
-                        <Button
-                            type="button"
-                            onClick={handleSendVerification}
-                            loading={loadingButton === "sendVerification"}
-                            disabled={resendCooldown > 0}
+                    <Box className="space-y-1">
+                        <Badge
+                            color="amber"
+                            variant="soft"
+                            radius="full"
+                            size="2"
                         >
-                            {resendCooldown > 0 ? (
-                                <Flex align="center" gap="2" justify="center">
-                                    <RefreshCw className="w-4 h-4 animate-spin" />
-                                    Resend in {resendCooldown}s
-                                </Flex>
-                            ) : (
-                                <Flex align="center" gap="2" justify="center">
-                                    <IoSend className="w-4 h-4" /> Resend Verification Link
+                            Account Unverified
+                        </Badge>
+
+                        <Text
+                            as="p"
+                            size="2"
+                            color="gray"
+                            className="mt-2 max-w-xs mx-auto"
+                        >
+                            Your account requires
+                            email verification
+                            before accessing the
+                            system dashboard.
+                        </Text>
+                    </Box>
+
+                    <Box className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded p-3">
+                        <Flex
+                            align="center"
+                            justify="between"
+                        >
+                            <Flex
+                                align="center"
+                                gap="2"
+                                className="overflow-hidden"
+                            >
+                                <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+
+                                <Text
+                                    size="2"
+                                    weight="bold"
+                                    className="truncate"
+                                >
+                                    {email ||
+                                        getValues(
+                                            "email"
+                                        )}
+                                </Text>
+                            </Flex>
+
+                            <Badge
+                                color="amber"
+                                variant="surface"
+                                size="1"
+                            >
+                                Pending
+                            </Badge>
+                        </Flex>
+                    </Box>
+                </Flex>
+            </motion.div>
+        );
+
+    /*
+     * ================================
+     * STEP CONTENT
+     * ================================
+     */
+
+    const stepContent =
+        useMemo(() => {
+            switch (step) {
+                case 1:
+                    return (
+                        <motion.div
+                            key="step1-content"
+                            variants={
+                                stepVariants
+                            }
+                            initial="hidden"
+                            animate="visible"
+                            exit="exit"
+                        >
+                            <Box mb="2">
+                                <Text
+                                    as="label"
+                                    size="2"
+                                    weight="medium"
+                                    htmlFor="email"
+                                >
+                                    Email
+                                </Text>
+                            </Box>
+
+                            <TextField.Root
+                                id="email"
+                                type="email"
+                                placeholder="example@company.com"
+                                {...register(
+                                    "email",
+                                    {
+                                        required:
+                                            "Email is required",
+
+                                        pattern: {
+                                            value: /\S+@\S+\.\S+/,
+                                            message:
+                                                "Enter a valid email",
+                                        },
+                                    }
+                                )}
+                            >
+                                <TextField.Slot>
+                                    <Mail className="w-5 h-5 text-gray-400" />
+                                </TextField.Slot>
+                            </TextField.Root>
+
+                            {errors.email && (
+                                <Flex
+                                    align="center"
+                                    gap="1"
+                                    mt="1"
+                                >
+                                    <AlertCircle className="w-4 h-4 text-red-500" />
+
+                                    <Text
+                                        size="2"
+                                        color="red"
+                                    >
+                                        {
+                                            errors
+                                                .email
+                                                .message
+                                        }
+                                    </Text>
                                 </Flex>
                             )}
-                        </Button>
+                        </motion.div>
+                    );
 
-                        <Button
-                            type="button"
-                            variant="outline"
-                            color="gray"
-                            size="2"
-                            onClick={() => {
-                                setNotification(null)
-                                setStep(1)
-                            }}
+                case 5:
+                    return renderUnverifiedStep();
+
+                default:
+                    return null;
+            }
+        }, [
+            step,
+            errors,
+            register,
+            email,
+            getValues,
+        ]);
+
+    /*
+     * ================================
+     * FOOTER BUTTONS
+     * ================================
+     */
+
+    const footerButtons =
+        useMemo(() => {
+            switch (step) {
+                case 1:
+                    return (
+                        <Box>
+                            <Button
+                                type="button"
+                                size="2"
+                                onClick={
+                                    handleEmailStep
+                                }
+                                loading={
+                                    loadingButton ===
+                                    "emailStep"
+                                }
+                                style={{
+                                    width: "100%",
+                                }}
+                            >
+                                <Flex
+                                    align="center"
+                                    gap="2"
+                                    justify="center"
+                                >
+                                    Continue
+                                    <FaAngleRight />
+                                </Flex>
+                            </Button>
+                        </Box>
+                    );
+
+                case 5:
+                    return (
+                        <Flex
+                            direction="column"
+                            gap="2"
+                            width="100%"
+                            align="stretch"
                         >
-                            <Flex align="center" gap="2" justify="center">
-                                <ArrowLeft className="w-4 h-4" /> Use Different Account
-                            </Flex>
-                        </Button>
-                    </Flex>
-                )
+                            <Button
+                                type="button"
+                                onClick={
+                                    handleSendVerification
+                                }
+                                loading={
+                                    loadingButton ===
+                                    "sendVerification"
+                                }
+                                disabled={
+                                    resendCooldown >
+                                    0
+                                }
+                            >
+                                {resendCooldown >
+                                0 ? (
+                                    <Flex
+                                        align="center"
+                                        gap="2"
+                                        justify="center"
+                                    >
+                                        <RefreshCw className="w-4 h-4 animate-spin" />
 
-            default:
-                return null
-        }
-    }, [step, loadingButton, handleEmailStep, handleSendVerification, resendCooldown])
+                                        Resend in{" "}
+                                        {
+                                            resendCooldown
+                                        }
+                                        s
+                                    </Flex>
+                                ) : (
+                                    <Flex
+                                        align="center"
+                                        gap="2"
+                                        justify="center"
+                                    >
+                                        <IoSend className="w-4 h-4" />
+
+                                        Resend Verification
+                                        Link
+                                    </Flex>
+                                )}
+                            </Button>
+
+                            <Button
+                                type="button"
+                                variant="outline"
+                                color="gray"
+                                size="2"
+                                onClick={() => {
+                                    setNotification(
+                                        null
+                                    );
+
+                                    setStep(1);
+
+                                    setEmail(
+                                        ""
+                                    );
+
+                                    setValue(
+                                        "email",
+                                        ""
+                                    );
+
+                                    setValue(
+                                        "password",
+                                        ""
+                                    );
+                                }}
+                            >
+                                <Flex
+                                    align="center"
+                                    gap="2"
+                                    justify="center"
+                                >
+                                    <ArrowLeft className="w-4 h-4" />
+
+                                    Use Different
+                                    Account
+                                </Flex>
+                            </Button>
+                        </Flex>
+                    );
+
+                default:
+                    return null;
+            }
+        }, [
+            step,
+            loadingButton,
+            handleEmailStep,
+            handleSendVerification,
+            resendCooldown,
+            setValue,
+        ]);
+
+    /*
+     * ================================
+     * RENDER
+     * ================================
+     */
 
     return (
         <FormProvider {...methods}>
-            <Flex align="center" justify="center" className="min-h-[100dvh] p-4">
+            <Flex
+                align="center"
+                justify="center"
+                className="min-h-[100dvh] p-4"
+            >
                 <Box className="w-full max-w-md">
-                    <Flex align="center" justify="center" gap="3" mb="6">
+
+                    {/* Logo */}
+                    <Flex
+                        align="center"
+                        justify="center"
+                        gap="3"
+                        mb="6"
+                    >
                         <MessageCircle className="w-8 h-8 text-sky-500" />
-                        <Text size="8" weight="bold" className="bg-gradient-to-r from-sky-500 to-indigo-500 bg-clip-text text-transparent">
+
+                        <Text
+                            size="8"
+                            weight="bold"
+                            className="bg-gradient-to-r from-sky-500 to-indigo-500 bg-clip-text text-transparent"
+                        >
                             Messenger
                         </Text>
                     </Flex>
 
-                    <form onSubmit={(e) => { e.preventDefault(); handleEmailStep(); }}>
-                        <Card variant="ghost" className="shadow-xl">
-                            <Box position="relative" className="text-center pt-6">
+                    <form
+                        onSubmit={(event) => {
+                            event.preventDefault();
+
+                            if (step === 1) {
+                                handleEmailStep();
+                            }
+                        }}
+                    >
+                        <Card
+                            variant="ghost"
+                            className="shadow-xl"
+                        >
+                            {/* Header */}
+                            <Box
+                                position="relative"
+                                className="text-center pt-6"
+                            >
                                 <AnimatePresence mode="wait">
                                     <motion.div
                                         key={`header-${step}`}
-                                        initial={{ opacity: 0, y: -10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: 10 }}
+                                        initial={{
+                                            opacity: 0,
+                                            y: -10,
+                                        }}
+                                        animate={{
+                                            opacity: 1,
+                                            y: 0,
+                                        }}
+                                        exit={{
+                                            opacity: 0,
+                                            y: 10,
+                                        }}
                                     >
-                                        <Text as="div" size="6" weight="bold" color={STEP_CONFIG.HEADERS[step].color}>
-                                            {STEP_CONFIG.HEADERS[step].title}
+                                        <Text
+                                            as="div"
+                                            size="6"
+                                            weight="bold"
+                                        >
+                                            {
+                                                STEP_CONFIG
+                                                    .HEADERS[
+                                                    step
+                                                ]
+                                                    .title
+                                            }
                                         </Text>
                                     </motion.div>
                                 </AnimatePresence>
                             </Box>
 
                             <Box px="4">
+
+                                {/* Notification */}
                                 <AnimatePresence>
                                     {notification && (
                                         <motion.div
-                                            initial={{ opacity: 0, y: -10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            exit={{ opacity: 0, y: -10 }}
-                                            transition={{ duration: 0.2 }}
+                                            initial={{
+                                                opacity: 0,
+                                                y: -10,
+                                            }}
+                                            animate={{
+                                                opacity: 1,
+                                                y: 0,
+                                            }}
+                                            exit={{
+                                                opacity: 0,
+                                                y: -10,
+                                            }}
                                             className="mt-4"
                                         >
                                             <Callout.Root
-                                                color={notification.type === "success" ? "green" : "red"}
+                                                color={
+                                                    notification.type ===
+                                                    "success"
+                                                        ? "green"
+                                                        : "red"
+                                                }
                                                 size="1"
                                                 variant="soft"
                                             >
-                                                <Callout.Icon className="flex items-center justify-center my-auto">
-                                                    {notification.type === "success" ? (
+                                                <Callout.Icon>
+                                                    {notification.type ===
+                                                    "success" ? (
                                                         <CheckCircle2 className="w-4 h-4" />
                                                     ) : (
                                                         <AlertCircle className="w-4 h-4" />
                                                     )}
                                                 </Callout.Icon>
+
                                                 <Callout.Text size="2">
-                                                    {notification.message}
+                                                    {
+                                                        notification.message
+                                                    }
                                                 </Callout.Text>
                                             </Callout.Root>
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
 
+                                {/* Step */}
                                 <AnimatePresence mode="wait">
                                     {stepContent}
                                 </AnimatePresence>
                             </Box>
 
-                            <Box px="4" width="100%" mt="2">
+                            {/* Footer */}
+                            <Box
+                                px="4"
+                                width="100%"
+                                mt="2"
+                            >
                                 {footerButtons}
                             </Box>
                         </Card>
                     </form>
 
-                    {/* Integrated Password & OTP Verification Modal */}
+                    {/* =====================================
+                        PASSWORD / OTP MODAL
+                    ===================================== */}
+
                     <PasswordModal
-                        isOpen={isPasswordAlertOpen}
-                        onOpenChange={(open) => {
-                            setIsPasswordAlertOpen(open)
+                        isOpen={
+                            isPasswordAlertOpen
+                        }
+
+                        onOpenChange={(
+                            open
+                        ) => {
+                            setIsPasswordAlertOpen(
+                                open
+                            );
+
                             if (!open) {
-                                setPasswordError(null)
-                                setValue("password", "")
+                                setPasswordError(
+                                    null
+                                );
+
+                                setValue(
+                                    "password",
+                                    ""
+                                );
+
+                                setValue(
+                                    "otpCode",
+                                    ""
+                                );
                             }
                         }}
+
                         purpose="LOGIN"
-                        subtitleAccount={email || getValues("email")}
-                        passwordError={passwordError}
-                        loadingState={loadingButton}
-                        contactOptions={contactOptions}
-                        onSubmitPassword={handleVerifyLogin}
-                        // onSendOtp={handleSendOtp}
-                        // onSubmitOtp={handleVerifyOtp}
-                        onSuccessNext={handleSuccessNextStep}
-                        // onResetPasswordSuccess={() => {
-                        //     setNotification({
-                        //         type: "success",
-                        //         message: "Password updated successfully. Please login with your new password."
-                        //     })
-                        // }}
+
+                        subtitleAccount={
+                            email ||
+                            getValues(
+                                "email"
+                            )
+                        }
+
+                        passwordError={
+                            passwordError
+                        }
+
+                        loadingState={
+                            loadingButton
+                        }
+
+                        contactOptions={
+                            contactOptions
+                        }
+
+                        /*
+                         * Password login
+                         */
+                        onSubmitPassword={
+                            handleVerifyLogin
+                        }
+
+                        /*
+                         * Password success
+                         */
+                        onSuccessNext={
+                            handleSuccessNextStep
+                        }
+
+                        /*
+                         * OTP success
+                         */
+                        onOtpVerified={
+                            handleOtpVerified
+                        }
                     />
 
-                    {/* Email Not Found Alert */}
-                    <AlertDialog.Root open={isNotFoundAlertOpen} onOpenChange={setIsNotFoundAlertOpen}>
-                        <AlertDialog.Content maxWidth="400px" className="relative p-6">
+                    {/* =====================================
+                        EMAIL NOT FOUND
+                    ===================================== */}
+
+                    <AlertDialog.Root
+                        open={
+                            isNotFoundAlertOpen
+                        }
+                        onOpenChange={
+                            setIsNotFoundAlertOpen
+                        }
+                    >
+                        <AlertDialog.Content
+                            maxWidth="400px"
+                            className="relative p-6"
+                        >
                             <Box className="absolute top-3 right-3">
                                 <AlertDialog.Cancel>
-                                    <IconButton variant="ghost" color="gray" type="button" size="2">
+                                    <IconButton
+                                        variant="ghost"
+                                        color="gray"
+                                        type="button"
+                                        size="2"
+                                    >
                                         <MdClose className="w-5 h-5" />
                                     </IconButton>
                                 </AlertDialog.Cancel>
                             </Box>
 
-                            <Flex direction="column" align="center" className="text-center pt-2">
-                                <AlertDialog.Title className="text-center">
-                                    <Flex align="center" justify="center" gap="2" className="text-red-600">
+                            <Flex
+                                direction="column"
+                                align="center"
+                                className="text-center pt-2"
+                            >
+                                <AlertDialog.Title>
+                                    <Flex
+                                        align="center"
+                                        justify="center"
+                                        gap="2"
+                                        className="text-red-600"
+                                    >
                                         <AlertCircle className="w-5 h-5" />
+
                                         Email Not Found
                                     </Flex>
                                 </AlertDialog.Title>
 
-                                <AlertDialog.Description size="2" my="4" className="text-center">
-                                    We couldn't find an account associated with <strong>{getValues("email")}</strong>. Would you like to register a new account?
+                                <AlertDialog.Description
+                                    size="2"
+                                    my="4"
+                                    className="text-center"
+                                >
+                                    We couldn't find
+                                    an account
+                                    associated with{" "}
+                                    <strong>
+                                        {
+                                            getValues(
+                                                "email"
+                                            )
+                                        }
+                                    </strong>
+                                    . Would you like
+                                    to register a new
+                                    account?
                                 </AlertDialog.Description>
 
-                                <Flex gap="3" width="100%" mt="2">
-                                    <AlertDialog.Cancel style={{ flex: 1 }}>
+                                <Flex
+                                    gap="3"
+                                    width="100%"
+                                    mt="2"
+                                >
+                                    <AlertDialog.Cancel
+                                        style={{
+                                            flex: 1,
+                                        }}
+                                    >
                                         <Button
                                             variant="soft"
                                             color="gray"
                                             type="button"
-                                            style={{ width: "100%" }}
+                                            style={{
+                                                width: "100%",
+                                            }}
                                         >
                                             Go Back
                                         </Button>
@@ -1062,9 +1208,16 @@ const MultiStepLogin = () => {
 
                                     <Button
                                         type="button"
-                                        onClick={goToRegister}
-                                        loading={loadingButton === "gotoreg"}
-                                        style={{ flex: 1 }}
+                                        onClick={
+                                            goToRegister
+                                        }
+                                        loading={
+                                            loadingButton ===
+                                            "gotoreg"
+                                        }
+                                        style={{
+                                            flex: 1,
+                                        }}
                                     >
                                         Go to Register
                                     </Button>
@@ -1075,7 +1228,7 @@ const MultiStepLogin = () => {
                 </Box>
             </Flex>
         </FormProvider>
-    )
-}
+    );
+};
 
-export default MultiStepLogin
+export default MultiStepLogin;
