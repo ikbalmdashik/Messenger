@@ -7,17 +7,19 @@ import Routes from "@/app/routes/routes";
 import { Spinner } from "@/components/ui/spinner";
 import axios from "axios";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 
 interface ValidationProps {
-  params: {
+  params: Promise<{
     token: string;
-  };
+  }>;
 }
 
 type Status = "loading" | "valid1" | "valid2" | "expired" | "notfound";
 
 const Validation = ({ params }: ValidationProps) => {
+  const { token } = use(params);
+
   const [status, setStatus] = useState<Status>("loading");
   const router = useRouter();
 
@@ -30,7 +32,7 @@ const Validation = ({ params }: ValidationProps) => {
     const validateToken = async () => {
       try {
         const res = await axios.get(API_ENDPOINTS.Validate, {
-          params: { token: params.token },
+          params: { token },
           withCredentials: true,
         });
 
@@ -38,14 +40,11 @@ const Validation = ({ params }: ValidationProps) => {
 
         if (action === "RESET_PASSWORD_ALLOWED") {
           setStatus("valid1");
-        } 
-        else if (action === "EMAIL_VERIFIED") {
+        } else if (action === "EMAIL_VERIFIED") {
           setStatus("valid2");
-        } 
-        else {
+        } else {
           setStatus("expired");
         }
-
       } catch (error: any) {
         const code = error?.response?.data?.statusCode;
 
@@ -58,7 +57,7 @@ const Validation = ({ params }: ValidationProps) => {
     };
 
     validateToken();
-  }, [params.token]);
+  }, [token]);
 
   useEffect(() => {
     if (status === "valid1") {
@@ -79,9 +78,7 @@ const Validation = ({ params }: ValidationProps) => {
   }
 
   if (status === "valid2") {
-    return (
-      <EmailVerifiedSuccess />
-    );
+    return <EmailVerifiedSuccess />;
   }
 
   if (status === "valid1" || status === "notfound") {

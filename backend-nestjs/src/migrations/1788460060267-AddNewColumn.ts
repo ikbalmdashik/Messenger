@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class AddNewColumn1788449850680 implements MigrationInterface {
-    name = 'AddNewColumn1788449850680'
+export class AddNewColumn1788460060267 implements MigrationInterface {
+    name = 'AddNewColumn1788460060267'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`
@@ -13,15 +13,6 @@ export class AddNewColumn1788449850680 implements MigrationInterface {
                 "status" character varying NOT NULL,
                 "createdAt" character varying NOT NULL,
                 CONSTRAINT "PK_cf55b28aed23b1b076c192f89de" PRIMARY KEY ("chatId")
-            )
-        `);
-        await queryRunner.query(`
-            CREATE TABLE "ChatsDemo" (
-                "id" SERIAL NOT NULL,
-                "userName" character varying NOT NULL,
-                "message" character varying NOT NULL,
-                "createdAt" character varying NOT NULL,
-                CONSTRAINT "PK_10da2208436f24ae8b3d5e5d4fa" PRIMARY KEY ("id")
             )
         `);
         await queryRunner.query(`
@@ -71,9 +62,6 @@ export class AddNewColumn1788449850680 implements MigrationInterface {
         `);
         await queryRunner.query(`
             DROP TABLE "users"
-        `);
-        await queryRunner.query(`
-            DROP TABLE "ChatsDemo"
         `);
         await queryRunner.query(`
             DROP TABLE "Chats"

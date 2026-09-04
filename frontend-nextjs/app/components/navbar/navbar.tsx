@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { MessageCircle, Zap, LogIn, Sun, Moon, X, Menu } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { Button } from "@radix-ui/themes";
 
 export function Navbar() {
     const [scrolled, setScrolled] = useState(false);
@@ -53,7 +54,7 @@ export function Navbar() {
             className={`fixed top-0 w-full z-50 transition-all duration-300 backdrop-blur-xl border-b border-black/10 dark:border-white/10 ${scrolled ? "bg-white/70 dark:bg-black/50" : "bg-white/40 dark:bg-black/30"
                 }`}
         >
-            <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div className="max-w-7xl mx-auto px-6 py-2 flex items-center justify-between">
                 <h1 className="font-bold text-xl md:text-2xl flex items-center gap-2 bg-gradient-to-r from-sky-500 to-indigo-500 bg-clip-text text-transparent">
                     <MessageCircle className="w-6 h-6 text-sky-500" /> Messenger
                 </h1>
@@ -67,29 +68,20 @@ export function Navbar() {
                         <Zap size={18} /> Features
                     </a>
 
-                    <button
+                    <Button
                         onClick={goLogin}
                         disabled={loading}
-                        className="relative flex items-center justify-center px-5 py-2 rounded-3xl bg-sky-500 text-white hover:scale-105 transition disabled:opacity-70"
+                        loading={loading}
+                        variant="ghost"
                     >
-                        {/* Content (always keeps layout) */}
-                        <span
-                            className={`flex items-center gap-2 ${loading ? "opacity-0" : "opacity-100"}`}
-                        >
-                            <LogIn size={18} />
+                        <span className="px-2 text-md">
                             Login
                         </span>
+                    </Button>
 
-                        {/* Spinner */}
-                        {loading && (
-                            <span className="absolute flex items-center justify-center">
-                                <Spinner size={20} />
-                            </span>
-                        )}
-                    </button>
                     <button
                         onClick={toggleTheme}
-                        className="relative w-12 h-12 flex items-center justify-center 
+                        className="relative w-8 h-8 flex items-center justify-center 
                                     rounded-full 
                                      
                                     hover:bg-black/10 dark:hover:bg-white/20

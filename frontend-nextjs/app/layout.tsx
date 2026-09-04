@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { ThemeProvider } from "next-themes";
+import "@radix-ui/themes/styles.css";
 import "./globals.css";
 import { Toaster } from "sonner";
+import { Theme } from "@radix-ui/themes/components/index";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -32,8 +34,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${geistSans.className}`}
       >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
-          <Toaster />
+          <Theme>
+            {children}
+            <Toaster />
+          </Theme>
         </ThemeProvider>
       </body>
     </html>
