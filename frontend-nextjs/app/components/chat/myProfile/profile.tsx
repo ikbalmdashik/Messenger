@@ -1,319 +1,422 @@
 "use client";
 
-import {
-    Dialog,
-    DialogTrigger,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-    User,
-    Mail,
-    Phone,
-    Shield,
-    Pencil,
-    Trash2,
-    X,
-    Check,
-} from "lucide-react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useForm } from "react-hook-form";
-import useCurrentUser, { initialUser } from "@/app/hooks/user/useCurrentUser";
 import axios from "axios";
-import API_ENDPOINTS from "@/app/routes/api";
 import { toast } from "sonner";
 
-const ProfileDialog = () => {
-    const [userId, setUserId] = useState<number | null>(null);
-    const [open, setOpen] = useState(false);
-    const [editable, setEditable] = useState(false);
-    const [confirmDelete, setConfirmDelete] = useState(false);
-    const [formInitialValues, setFormInitialValues] = useState({
-        fullName: "",
-        email: "",
-        phone: "",
-    });
+import API_ENDPOINTS from "@/app/routes/api";
+import useCurrentUser, { initialUser } from "@/app/hooks/user/useCurrentUser";
 
-    const user = useCurrentUser(userId);
-    const isLoading = userId === null || user === initialUser;
+import {
+  Dialog,
+  Button,
+  TextField,
+  Flex,
+  Text,
+  Avatar,
+  Badge,
+  Box,
+  Separator,
+  IconButton,
+} from "@radix-ui/themes";
 
-    const { register, reset, watch } = useForm({
-        defaultValues: {
-            fullName: "",
-            email: "",
-            phone: "",
-            role: "",
-        },
-    });
+import {
+  User as UserIcon,
+  Mail,
+  Phone,
+  Shield,
+  Pencil,
+  Trash2,
+  X,
+  Check,
+  UserCheck,
+  AlertTriangle,
+} from "lucide-react";
 
-    const watchFields = watch();
+interface FormFields {
+  fullName: string;
+  email: string;
+  phone: string;
+  role: string;
+}
 
-    useEffect(() => {
-        const id = Number(sessionStorage.getItem("loginId"));
-        if (!isNaN(id)) setUserId(id);
-    }, []);
+const ProfileDialog: React.FC = () => {
+  const [userId, setUserId] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
+  const [editable, setEditable] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-    useEffect(() => {
-        if (user && user !== initialUser) {
-            reset({
-                fullName: user.fullName || "",
-                email: user.email || "",
-                phone: user.phone || "",
-                role: user.role || "",
-            });
-            setFormInitialValues({
-                fullName: user.fullName || "",
-                email: user.email || "",
-                phone: user.phone || "",
-            });
-        }
-    }, [user, reset]);
+  const [formInitialValues, setFormInitialValues] = useState({
+    fullName: "",
+    email: "",
+    phone: "",
+  });
 
-    const hasChanged =
-        watchFields.fullName !== formInitialValues.fullName ||
-        watchFields.email !== formInitialValues.email ||
-        watchFields.phone !== formInitialValues.phone;
+  const user = useCurrentUser(userId);
+  const isLoading = userId === null || user === initialUser;
 
-    const handleUpdate = async () => {
-        try {
-            const updatedData = {
-                userId,
-                fullName: watchFields.fullName,
-                email: watchFields.email,
-                phone: watchFields.phone,
-                role: watchFields.role,
-            };
+  const { register, reset, watch } = useForm<FormFields>({
+    defaultValues: {
+      fullName: "",
+      email: "",
+      phone: "",
+      role: "",
+    },
+  });
 
-            await axios.post(API_ENDPOINTS.UpdateUser, updatedData);
+  const watchFields = watch();
 
-            toast.success("Profile updated successfully.");
+  useEffect(() => {
+    const id = Number(sessionStorage.getItem("loginId"));
+    if (!isNaN(id) && id > 0) setUserId(id);
+  }, []);
 
-            setFormInitialValues({
-                fullName: updatedData.fullName,
-                email: updatedData.email,
-                phone: updatedData.phone,
-            });
+  useEffect(() => {
+    if (user && user !== initialUser) {
+      const userData = {
+        fullName: user.fullName || "",
+        email: user.email || "",
+        phone: user.phone || "",
+        role: user.role || "",
+      };
+      reset(userData);
+      setFormInitialValues({
+        fullName: userData.fullName,
+        email: userData.email,
+        phone: userData.phone,
+      });
+    }
+  }, [user, reset]);
 
-            setEditable(false);
-        } catch (error) {
-            toast.error("Failed to update profile.");
-            console.error(error);
-        }
-    };
+  const hasChanged = useMemo(
+    () =>
+      watchFields.fullName !== formInitialValues.fullName ||
+      watchFields.email !== formInitialValues.email ||
+      watchFields.phone !== formInitialValues.phone,
+    [watchFields, formInitialValues]
+  );
 
-    const handleConfirmDelete = async () => {
-        try {
-            // Simulate delete API
-            await axios.post(API_ENDPOINTS.DeleteUser, { id: userId });
+  const initials = useMemo(() => {
+    if (!watchFields.fullName) return "U";
+    return watchFields.fullName
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  }, [watchFields.fullName]);
 
-            toast.custom((t) => (
-                <div className="flex items-center gap-4 bg-red-600 text-white px-4 py-2 rounded shadow">
-                    <Trash2 className="w-5 h-5" />
-                    <div>
-                        <p className="font-semibold">User Deleted</p>
-                        <p className="text-sm opacity-90">The user account has been successfully deleted.</p>
-                    </div>
-                    <button onClick={() => toast.dismiss(t)} className="ml-auto font-bold px-2">
-                        ×
-                    </button>
-                </div>
-            ));
+  const handleUpdate = useCallback(async () => {
+    try {
+      const updatedData = {
+        userId,
+        fullName: watchFields.fullName,
+        email: watchFields.email,
+        phone: watchFields.phone,
+        role: watchFields.role,
+      };
 
-            setConfirmDelete(false);
-            setOpen(false);
-        } catch (error) {
-            toast.custom((t) => (
-                <div className="flex items-center gap-4 bg-red-500 text-white px-4 py-2 rounded shadow">
-                    <X className="w-5 h-5" />
-                    <div>
-                        <p className="font-semibold">Delete Failed</p>
-                        <p className="text-sm opacity-90">Something went wrong. Please try again.</p>
-                    </div>
-                    <button onClick={() => toast.dismiss(t)} className="ml-auto font-bold px-2">
-                        ×
-                    </button>
-                </div>
-            ));
-        }
-    };
+      await axios.post(API_ENDPOINTS.UpdateUser, updatedData);
 
-    const myProfileClick = async () => {
-        try {
-            const profile = (
-                await axios.get(API_ENDPOINTS.GetUserById + userId)
-            ).data;
+      toast.success("Profile updated successfully.");
 
-            setFormInitialValues({
-                fullName: profile.fullName,
-                email: profile.email,
-                phone: profile.phone,
-            });
+      setFormInitialValues({
+        fullName: updatedData.fullName,
+        email: updatedData.email,
+        phone: updatedData.phone,
+      });
 
-            reset(profile);
-            setEditable(false);
-            setOpen(true);
-        } catch (err) {
-            toast.error("Failed to fetch profile.");
-        }
-    };
+      setEditable(false);
+    } catch (error) {
+      toast.error("Failed to update profile.");
+      console.error(error);
+    }
+  }, [userId, watchFields]);
 
-    return (
-        <>
-            <Dialog open={open} onOpenChange={setOpen}>
-                <DialogTrigger asChild>
-                    <Button
-                        variant="outline"
-                        className="flex items-center gap-2 border border-black/30 dark:border-white/20"
-                        onClick={myProfileClick}
-                    >
-                        <User className="w-4 h-4" />
-                        
-                    </Button>
-                </DialogTrigger>
+  const handleConfirmDelete = useCallback(async () => {
+    try {
+      await axios.post(API_ENDPOINTS.DeleteUser, { id: userId });
 
-                <DialogContent
-                    className="max-w-md border border-black/30 dark:border-white/20"
-                    onInteractOutside={(e) => e.preventDefault()}
-                    onEscapeKeyDown={(e) => e.preventDefault()}
+      toast.success("User account deleted successfully.");
+      setConfirmDelete(false);
+      setOpen(false);
+    } catch (error) {
+      toast.error("Delete failed. Please try again.");
+      console.error(error);
+    }
+  }, [userId]);
+
+  const handleMyProfileClick = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const response = await axios.get(API_ENDPOINTS.GetUserById + userId);
+      const profile = response.data;
+
+      setFormInitialValues({
+        fullName: profile.fullName || "",
+        email: profile.email || "",
+        phone: profile.phone || "",
+      });
+
+      reset(profile);
+      setEditable(false);
+      setOpen(true);
+    } catch (err) {
+      toast.error("Failed to fetch profile details.");
+    }
+  }, [userId, reset]);
+
+  return (
+    <>
+      <Dialog.Root open={open} onOpenChange={setOpen}>
+        <Dialog.Trigger>
+          <IconButton
+            variant="soft"
+            color="gray"
+            size="2"
+            onClick={handleMyProfileClick}
+            className="cursor-pointer rounded-full"
+          >
+            <UserIcon className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+          </IconButton>
+        </Dialog.Trigger>
+
+        <Dialog.Content className="max-w-md p-6 rounded-2xl bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-xl border border-[var(--gray-a4)] shadow-2xl">
+          <Flex align="center" justify="between" mb="3">
+            <Box>
+              <Dialog.Title className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                User Profile
+              </Dialog.Title>
+              <Dialog.Description className="text-xs text-slate-500 dark:text-slate-400">
+                Manage your account credentials and personal information.
+              </Dialog.Description>
+            </Box>
+
+            <Dialog.Close>
+              <IconButton variant="ghost" color="gray" size="1" className="cursor-pointer">
+                <X className="w-4 h-4" />
+              </IconButton>
+            </Dialog.Close>
+          </Flex>
+
+          {isLoading ? (
+            <Flex align="center" justify="center" className="py-8">
+              <Text size="2" color="gray">
+                Loading profile information...
+              </Text>
+            </Flex>
+          ) : (
+            <Flex direction="column" gap="4">
+              {/* Profile Card Header */}
+              <Flex align="center" gap="3" className="p-3 rounded-xl bg-slate-200/50 dark:bg-slate-800/50 border border-[var(--gray-a3)]">
+                <Avatar
+                  size="4"
+                  radius="full"
+                  fallback={initials}
+                  color="sky"
+                  variant="soft"
+                />
+                <Box className="min-w-0 flex-1">
+                  <Text size="3" weight="bold" className="text-slate-900 dark:text-slate-100 truncate block">
+                    {watchFields.fullName || "User Account"}
+                  </Text>
+                  <Text size="1" color="gray" className="truncate block">
+                    {watchFields.email}
+                  </Text>
+                </Box>
+                {watchFields.role && (
+                  <Badge color="sky" variant="soft" size="1" className="capitalize">
+                    {watchFields.role}
+                  </Badge>
+                )}
+              </Flex>
+
+              {/* Form Input Fields */}
+              <Flex direction="column" gap="3">
+                <Box>
+                  <Text size="1" weight="medium" color="gray" className="mb-1 block">
+                    Full Name
+                  </Text>
+                  <TextField.Root
+                    {...register("fullName")}
+                    disabled={!editable}
+                    placeholder="Full Name"
+                    size="2"
+                    variant="surface"
+                    className="rounded-lg"
+                  >
+                    <TextField.Slot>
+                      <UserCheck className="w-4 h-4 text-slate-400" />
+                    </TextField.Slot>
+                  </TextField.Root>
+                </Box>
+
+                <Box>
+                  <Text size="1" weight="medium" color="gray" className="mb-1 block">
+                    Email Address
+                  </Text>
+                  <TextField.Root
+                    {...register("email")}
+                    disabled={!editable}
+                    placeholder="Email Address"
+                    size="2"
+                    variant="surface"
+                    className="rounded-lg"
+                  >
+                    <TextField.Slot>
+                      <Mail className="w-4 h-4 text-slate-400" />
+                    </TextField.Slot>
+                  </TextField.Root>
+                </Box>
+
+                <Box>
+                  <Text size="1" weight="medium" color="gray" className="mb-1 block">
+                    Phone Number
+                  </Text>
+                  <TextField.Root
+                    {...register("phone")}
+                    disabled={!editable}
+                    placeholder="Phone Number"
+                    size="2"
+                    variant="surface"
+                    className="rounded-lg"
+                  >
+                    <TextField.Slot>
+                      <Phone className="w-4 h-4 text-slate-400" />
+                    </TextField.Slot>
+                  </TextField.Root>
+                </Box>
+
+                <Box>
+                  <Text size="1" weight="medium" color="gray" className="mb-1 block">
+                    Account Role
+                  </Text>
+                  <TextField.Root
+                    {...register("role")}
+                    disabled
+                    placeholder="Role"
+                    size="2"
+                    variant="surface"
+                    className="rounded-lg opacity-80"
+                  >
+                    <TextField.Slot>
+                      <Shield className="w-4 h-4 text-slate-400" />
+                    </TextField.Slot>
+                  </TextField.Root>
+                </Box>
+              </Flex>
+
+              <Separator size="4" className="my-1 opacity-50" />
+
+              {/* Action Buttons Footer */}
+              <Flex align="center" justify="between">
+                <Button
+                  color="red"
+                  variant="soft"
+                  size="2"
+                  onClick={() => setConfirmDelete(true)}
+                  className="cursor-pointer"
                 >
-                    <DialogHeader className="flex justify-between items-start">
-                        <div>
-                            <DialogTitle className="text-white">Profile</DialogTitle>
-                            <DialogDescription>This is your profile info.</DialogDescription>
-                        </div>
-                    </DialogHeader>
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Delete
+                </Button>
 
-                    {isLoading ? (
-                        <p className="text-center text-sm text-muted-foreground">Loading...</p>
-                    ) : (
-                        <div className="space-y-4 pt-2">
-                            {/* Full Name */}
-                            <div className="relative">
-                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                <Input
-                                    {...register("fullName")}
-                                    disabled={!editable}
-                                    placeholder="Full Name"
-                                    className="pl-10"
-                                />
-                            </div>
+                <Button
+                  color={editable && hasChanged ? "sky" : "gray"}
+                  variant={editable ? "solid" : "soft"}
+                  size="2"
+                  className="cursor-pointer"
+                  onClick={() => {
+                    if (!editable) {
+                      setEditable(true);
+                    } else if (editable && hasChanged) {
+                      handleUpdate();
+                    } else if (editable && !hasChanged) {
+                      reset({
+                        ...watchFields,
+                        fullName: formInitialValues.fullName,
+                        email: formInitialValues.email,
+                        phone: formInitialValues.phone,
+                      });
+                      setEditable(false);
+                      toast.info("Changes discarded.");
+                    }
+                  }}
+                >
+                  {!editable && (
+                    <>
+                      <Pencil className="w-4 h-4 mr-1" />
+                      Edit Profile
+                    </>
+                  )}
+                  {editable && hasChanged && (
+                    <>
+                      <Check className="w-4 h-4 mr-1" />
+                      Save Changes
+                    </>
+                  )}
+                  {editable && !hasChanged && (
+                    <>
+                      <X className="w-4 h-4 mr-1" />
+                      Cancel
+                    </>
+                  )}
+                </Button>
+              </Flex>
+            </Flex>
+          )}
+        </Dialog.Content>
+      </Dialog.Root>
 
-                            {/* Email */}
-                            <div className="relative">
-                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                <Input
-                                    {...register("email")}
-                                    disabled={!editable}
-                                    placeholder="Email"
-                                    className="pl-10"
-                                />
-                            </div>
+      {/* Delete Confirmation Modal */}
+      <Dialog.Root open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <Dialog.Content className="max-w-sm p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-[var(--gray-a4)] shadow-2xl">
+          <Flex align="center" gap="2" className="mb-2 text-rose-500">
+            <AlertTriangle className="w-5 h-5" />
+            <Dialog.Title className="text-base font-bold">Confirm Account Deletion</Dialog.Title>
+          </Flex>
 
-                            {/* Phone */}
-                            <div className="relative">
-                                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                <Input
-                                    {...register("phone")}
-                                    disabled={!editable}
-                                    placeholder="Phone"
-                                    className="pl-10"
-                                />
-                            </div>
+          <Dialog.Description className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+            Are you sure you want to permanently delete this user account? This action cannot be undone.
+          </Dialog.Description>
 
-                            {/* Role */}
-                            <div className="relative">
-                                <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                <Input
-                                    {...register("role")}
-                                    disabled
-                                    placeholder="Role"
-                                    className="pl-10"
-                                />
-                            </div>
+          <Box className="p-3 mb-4 rounded-xl bg-slate-200/50 dark:bg-slate-800/50 border border-[var(--gray-a3)] space-y-1">
+            <Text size="1" color="gray" className="block">
+              <strong>Name:</strong> {watchFields.fullName || "N/A"}
+            </Text>
+            <Text size="1" color="gray" className="block">
+              <strong>Email:</strong> {watchFields.email || "N/A"}
+            </Text>
+            <Text size="1" color="gray" className="block">
+              <strong>Phone:</strong> {watchFields.phone || "N/A"}
+            </Text>
+          </Box>
 
-                            {/* Action Buttons */}
-                            <div className="flex justify-between pt-2">
-                                <Button
-                                    variant="destructive"
-                                    onClick={() => setConfirmDelete(true)}
-                                    className="flex gap-2 items-center"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                    Delete Account
-                                </Button>
-
-                                <Button
-                                    variant="secondary"
-                                    onClick={() => {
-                                        if (!editable) {
-                                            setEditable(true);
-                                        } else if (editable && hasChanged) {
-                                            handleUpdate();
-                                        } else if (editable && !hasChanged) {
-                                            reset(formInitialValues);
-                                            setEditable(false);
-                                            toast("Changes discarded.");
-                                        }
-                                    }}
-                                >
-                                    {!editable && (
-                                        <>
-                                            <Pencil className="w-4 h-4 mr-2" />
-                                            Edit
-                                        </>
-                                    )}
-                                    {editable && hasChanged && (
-                                        <>
-                                            <Check className="w-4 h-4 mr-2" />
-                                            Update
-                                        </>
-                                    )}
-                                    {editable && !hasChanged && (
-                                        <>
-                                            <X className="w-4 h-4 mr-2" />
-                                            Cancel
-                                        </>
-                                    )}
-                                </Button>
-                            </div>
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
-
-            {/* Delete Confirmation Dialog */}
-            <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-                <DialogContent className="max-w-sm">
-                    <DialogHeader>
-                        <DialogTitle>Confirm Delete</DialogTitle>
-                        <DialogDescription>
-                            Are you sure you want to delete this account?
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="text-sm space-y-1">
-                        <p><strong>Name:</strong> {watchFields.fullName}</p>
-                        <p><strong>Email:</strong> {watchFields.email}</p>
-                        <p><strong>Phone:</strong> {watchFields.phone}</p>
-                        <p><strong>Role:</strong> {watchFields.role}</p>
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-4">
-                        <Button variant="secondary" onClick={() => setConfirmDelete(false)}>
-                            Go Back
-                        </Button>
-                        <Button variant="destructive" onClick={handleConfirmDelete}>
-                            Delete
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-        </>
-    );
+          <Flex justify="end" gap="2">
+            <Button
+              variant="soft"
+              color="gray"
+              size="2"
+              onClick={() => setConfirmDelete(false)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              variant="solid"
+              size="2"
+              onClick={handleConfirmDelete}
+              className="cursor-pointer"
+            >
+              Confirm Delete
+            </Button>
+          </Flex>
+        </Dialog.Content>
+      </Dialog.Root>
+    </>
+  );
 };
 
-export default ProfileDialog;
+export default React.memo(ProfileDialog);

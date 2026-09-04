@@ -15,9 +15,7 @@ import {
   Text,
   Avatar,
   Badge,
-  TextField,
   IconButton,
-  ScrollArea,
 } from "@radix-ui/themes";
 
 import {
@@ -40,12 +38,12 @@ interface MiddlebarProps {
 // Sub-component for message status icons
 const StatusIcon = React.memo(({ status }: { status?: any }) => {
   if (status?.toLowerCase() === "seen") {
-    return <CheckCheck className="w-3.5 h-3.5 text-sky-400" />;
+    return <CheckCheck className="w-3.5 h-3.5 text-sky-400 shrink-0" />;
   }
   if (status?.toLowerCase() === "delivered") {
-    return <CheckCheck className="w-3.5 h-3.5 text-slate-400" />;
+    return <CheckCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />;
   }
-  return <Check className="w-3.5 h-3.5 text-slate-400" />;
+  return <Check className="w-3.5 h-3.5 text-slate-400 shrink-0" />;
 });
 StatusIcon.displayName = "StatusIcon";
 
@@ -99,7 +97,7 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chats]);
 
-  // Send message using the persistent socket reference
+  // Send message using persistent socket
   const sendMessage = useCallback(() => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage || !socketRef.current) return;
@@ -115,14 +113,6 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
     setMessage("");
   }, [message, senderId, receiverId]);
 
-  // Handle enter key trigger
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
   const handleSendMessage = () => {
     if (!message.trim()) return;
 
@@ -133,7 +123,13 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
     }
   };
 
-  // Memoized check for valid user session selection
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
   const hasSelectedUser = useMemo(() => Boolean(receiver?.userId), [receiver?.userId]);
 
   if (!hasSelectedUser) {
@@ -153,9 +149,9 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
   }
 
   return (
-    <Flex direction="column" className="h-full w-full backdrop-blur-xl">
-      {/* Header */}
-      <Box p="3" className="border-b border-[var(--gray-a4)]">
+    <div className="flex flex-col h-full w-full min-h-0 overflow-hidden backdrop-blur-xl">
+      {/* 1. Header Section (Fixed Height) */}
+      <Box p="3" className="shrink-0 border-b border-[var(--gray-a4)]">
         <Flex align="center" justify="between">
           <Flex align="center" gap="3">
             {onBack && (
@@ -164,7 +160,7 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
                 color="gray"
                 size="2"
                 onClick={onBack}
-                className="md:hidden cursor-pointer"
+                className="md:hidden cursor-pointer shrink-0"
               >
                 <ArrowLeft className="w-5 h-5" />
               </IconButton>
@@ -184,9 +180,9 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
                   {receiver?.fullName}
                 </Text>
                 {receiver?.isEmailVerified ? (
-                  <BadgeCheck className="w-4 h-4 text-emerald-500" />
+                  <BadgeCheck className="w-4 h-4 text-emerald-500 shrink-0" />
                 ) : (
-                  <BadgeAlert className="w-4 h-4 text-rose-500" />
+                  <BadgeAlert className="w-4 h-4 text-rose-500 shrink-0" />
                 )}
               </Flex>
               {receiver?.role && (
@@ -197,95 +193,96 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
             </Box>
           </Flex>
 
-          <Flex align="center" gap="2">
+          <Flex align="center" gap="2" display={{ initial: "flex", md: "none" }}>
+            {/* Info button hidden on desktop screens via md:hidden */}
             <IconButton
               variant="ghost"
               color="gray"
               onClick={() => onOpenProfile?.()}
+              className="cursor-pointer shrink-0"
             >
               <AiOutlineInfoCircle className="h-5 w-5" />
             </IconButton>
-          </Flex>
 
-          <Badge color={receiver?.isEmailVerified ? "green" : "amber"} variant="soft" size="1">
-            {receiver?.isEmailVerified ? "Verified User" : "Unverified"}
-          </Badge>
+            <Badge color={receiver?.isEmailVerified ? "green" : "amber"} variant="soft" size="1">
+              {receiver?.isEmailVerified ? "Verified User" : "Unverified"}
+            </Badge>
+          </Flex>
         </Flex>
       </Box>
 
-      {/* Messages Feed */}
-      <Box className="flex-1 overflow-hidden">
-        <ScrollArea type="hover" scrollbars="vertical" className="h-full p-4">
-          <AnimatePresence initial={false}>
-            {chats.map((chat, idx) => {
-              const isMine = chat.senderId === senderId;
-              const { datePart, timePart } = parseChatTimestamp(chat.createdAt);
+      {/* 2. Messages Feed (Strictly Constrained Scroll Container) */}
+      <div className="flex-1 min-h-0 w-full overflow-y-auto p-4">
+        <AnimatePresence initial={false}>
+          {chats.map((chat, idx) => {
+            const isMine = chat.senderId === senderId;
+            const { datePart, timePart } = parseChatTimestamp(chat.createdAt);
 
-              return (
-                <motion.div
-                  key={chat.chatId || idx}
-                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="mb-3"
-                >
-                  <Flex direction="column" align="center" gap="1">
-                    {/* Centered Date Separator */}
-                    {datePart && (
-                      <Text size="1" color="gray" className="my-1 text-[11px] opacity-70">
-                        {datePart}
-                      </Text>
-                    )}
+            return (
+              <motion.div
+                key={chat.chatId || idx}
+                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="mb-3"
+              >
+                <Flex direction="column" align="center" gap="1">
+                  {/* Centered Date Separator */}
+                  {datePart && (
+                    <Text size="1" color="gray" className="my-1 text-[11px] opacity-70">
+                      {datePart}
+                    </Text>
+                  )}
 
-                    {/* Message Row */}
-                    <Flex justify={isMine ? "end" : "start"} className="w-full">
-                      <Box
-                        className={`max-w-[75%] px-3.5 py-2 rounded-2xl break-words text-sm shadow-sm transition-all ${isMine
+                  {/* Message Row */}
+                  <Flex justify={isMine ? "end" : "start"} className="w-full">
+                    <div
+                      className={`max-w-[80%] sm:max-w-[70%] px-3.5 py-2 rounded-2xl break-words text-sm shadow-sm transition-all overflow-hidden ${
+                        isMine
                           ? "bg-sky-600 text-white rounded-br-xs"
                           : "bg-slate-200/80 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 border border-[var(--gray-a3)] rounded-bl-xs"
-                          }`}
-                      >
-                        <Text size="2" className="leading-relaxed whitespace-pre-wrap">
-                          {chat.message}
-                        </Text>
-                      </Box>
-                    </Flex>
-
-                    {/* Message Timestamp & Delivery Status */}
-                    {isMine && (
-                      <Flex align="center" gap="1" className="w-full justify-end px-1">
-                        <StatusIcon status={chat.status} />
-                        <Text size="1" color="gray" className="text-[10px]">
-                          {timePart}
-                        </Text>
-                      </Flex>
-                    )}
+                      }`}
+                    >
+                      <p className="leading-relaxed whitespace-pre-wrap break-words min-w-0">
+                        {chat.message}
+                      </p>
+                    </div>
                   </Flex>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-          <div ref={bottomRef} />
-        </ScrollArea>
-      </Box>
 
-      {/* Message Input Footer */}
-      <Box p="3" className="border-t border-[var(--gray-a4)]">
+                  {/* Message Timestamp & Delivery Status */}
+                  {isMine && (
+                    <Flex align="center" gap="1" className="w-full justify-end px-1">
+                      <StatusIcon status={chat.status} />
+                      <Text size="1" color="gray" className="text-[10px]">
+                        {timePart}
+                      </Text>
+                    </Flex>
+                  )}
+                </Flex>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+        <div ref={bottomRef} />
+      </div>
+
+      {/* 3. Input Footer Section (Fixed Height) */}
+      <Box p="3" className="shrink-0 border-t border-[var(--gray-a4)]">
         <Flex
           align="center"
           gap="2"
           className="
-      rounded
-      border
-      border-[var(--gray-a4)]
-      bg-[var(--gray-a2)]
-      px-3
-      py-2
-      transition-colors
-      focus-within:border-[var(--accent-a7)]
-      focus-within:bg-[var(--gray-a1)]
-    "
+            rounded
+            border
+            border-[var(--gray-a4)]
+            bg-[var(--gray-a2)]
+            px-3
+            py-2
+            transition-colors
+            focus-within:border-[var(--accent-a7)]
+            focus-within:bg-[var(--gray-a1)]
+          "
         >
           {/* Attachment */}
           <IconButton
@@ -294,23 +291,22 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
             variant="ghost"
             color="gray"
             className="
-        !rounded-lg
-        !p-1.5
-        shrink-0
-        text-[var(--gray-a8)]
-        hover:text-[var(--gray-a11)]
-      "
+              !rounded-lg
+              !p-1.5
+              shrink-0
+              text-[var(--gray-a8)]
+              hover:text-[var(--gray-a11)]
+            "
           >
             <Paperclip className="h-4 w-4" />
           </IconButton>
 
-          {/* Message */}
+          {/* Message Input */}
           <textarea
             ref={textareaRef}
             value={message}
             onChange={(e) => {
               setMessage(e.target.value);
-
               e.target.style.height = "auto";
               e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
             }}
@@ -318,22 +314,22 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
             placeholder="Write a message..."
             rows={1}
             className="
-    min-h-[20px]
-    max-h-[120px]
-    min-w-0
-    flex-1
-    resize-none
-    overflow-y-auto
-    bg-transparent
-    text-sm
-    leading-6
-    text-[var(--gray-a12)]
-    placeholder:text-[var(--gray-a8)]
-    outline-none
-  "
+              min-h-[20px]
+              max-h-[120px]
+              min-w-0
+              flex-1
+              resize-none
+              overflow-y-auto
+              bg-transparent
+              text-sm
+              leading-6
+              text-[var(--gray-a12)]
+              placeholder:text-[var(--gray-a8)]
+              outline-none
+            "
           />
 
-          {/* Send */}
+          {/* Send Button */}
           <IconButton
             type="button"
             size="2"
@@ -342,29 +338,30 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
             onClick={handleSendMessage}
             disabled={!message.trim()}
             className={`
-        !rounded-full
-        shrink-0
-        transition-all
-        duration-200
-        ${message.trim()
-                ? `
-              !text-[var(--gray-a12)]
-              hover:!bg-[var(--gray-a4)]
-              hover:scale-105
-              active:scale-90
-            `
-                : `
-              !text-[var(--gray-a6)]
-              opacity-60
-            `
+              !rounded-full
+              shrink-0
+              transition-all
+              duration-200
+              ${
+                message.trim()
+                  ? `
+                    !text-[var(--gray-a12)]
+                    hover:!bg-[var(--gray-a4)]
+                    hover:scale-105
+                    active:scale-90
+                  `
+                  : `
+                    !text-[var(--gray-a6)]
+                    opacity-60
+                  `
               }
-      `}
+            `}
           >
             <Send className="h-4 w-4" />
           </IconButton>
         </Flex>
       </Box>
-    </Flex>
+    </div>
   );
 };
 
