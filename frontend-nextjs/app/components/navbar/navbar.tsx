@@ -1,6 +1,5 @@
 "use client";
 import Routes from "@/app/routes/routes";
-import { Spinner } from "@/components/ui/spinner";
 import { motion } from "framer-motion";
 import { MessageCircle, Zap, LogIn, Sun, Moon, X, Menu } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -91,8 +90,8 @@ export function Navbar() {
                         <Sun
                             size={20}
                             className={`absolute transition-all duration-500 transform ${theme === "dark"
-                                    ? "opacity-100 rotate-0 scale-100"
-                                    : "opacity-0 -rotate-90 scale-50"
+                                ? "opacity-100 rotate-0 scale-100"
+                                : "opacity-0 -rotate-90 scale-50"
                                 }`}
                         />
 
@@ -100,8 +99,8 @@ export function Navbar() {
                         <Moon
                             size={20}
                             className={`absolute transition-all duration-500 transform ${theme === "dark"
-                                    ? "opacity-0 rotate-90 scale-50"
-                                    : "opacity-100 rotate-0 scale-100"
+                                ? "opacity-0 rotate-90 scale-50"
+                                : "opacity-100 rotate-0 scale-100"
                                 }`}
                         />
                     </button>
@@ -122,31 +121,22 @@ export function Navbar() {
                     >
                         <Zap size={18} /> Features
                     </a>
-                    <button
+                    <Button
                         onClick={goLogin}
                         disabled={loading}
-                        className="relative flex items-center justify-center px-5 py-2 rounded-3xl bg-sky-500 text-white hover:scale-105 transition disabled:opacity-70"
+                        loading={loading}
+                        variant="ghost"
                     >
-                        {/* Content (always keeps layout) */}
-                        <span
-                            className={`flex items-center gap-2 ${loading ? "opacity-0" : "opacity-100"}`}
-                        >
-                            <LogIn size={18} />
+                        <span className="px-2 text-md">
                             Login
                         </span>
+                    </Button>
 
-                        {/* Spinner */}
-                        {loading && (
-                            <span className="absolute flex items-center justify-center">
-                                <Spinner size={20} />
-                            </span>
-                        )}
-                    </button>
                     <button
                         onClick={toggleTheme}
-                        className="relative p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-300"
+                        className="relative h-8 flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-300"
                     >
-                        <span className="inline-flex items-center gap-2 px-4 relative">
+                        <span className="inline-flex items-center gap-2 mt-2 relative">
 
                             <Sun
                                 size={18}

@@ -4,6 +4,7 @@ import { Box, Progress, Text } from "@radix-ui/themes";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Routes from "@/app/routes/routes";
+import FullScreenSpinner from "./components/spinner";
 
 export default function LoadingProgress() {
   const [progress, setProgress] = useState(0);
@@ -19,12 +20,11 @@ export default function LoadingProgress() {
 
         return Math.min(prev + Math.random() * 8, 100);
       });
-    }, 300);
+    }, 100);
 
     return () => clearInterval(interval);
   }, []);
 
-  // Redirect AFTER progress reaches 100
   useEffect(() => {
     if (progress >= 50) {
       router.replace(Routes.LandingPage);
@@ -43,5 +43,6 @@ export default function LoadingProgress() {
         </Box>
       </Box>
     </div>
+
   );
 }

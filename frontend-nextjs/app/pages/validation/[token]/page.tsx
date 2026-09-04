@@ -4,7 +4,7 @@ import EmailVerifiedSuccess from "@/app/components/validation/successEmail";
 import TokenExpire from "@/app/components/validation/tokenExpire";
 import API_ENDPOINTS from "@/app/routes/api";
 import Routes from "@/app/routes/routes";
-import { Spinner } from "@/components/ui/spinner";
+import { FullScreenSpinner } from "@/app/components/spinner";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 import { use, useEffect, useRef, useState } from "react";
@@ -72,7 +72,7 @@ const Validation = ({ params }: ValidationProps) => {
   if (status === "loading") {
     return (
       <div className="bg-white dark:bg-slate-950 flex items-center justify-center min-h-screen">
-        <Spinner size={50} />
+        <FullScreenSpinner size={"3"} />
       </div>
     );
   }

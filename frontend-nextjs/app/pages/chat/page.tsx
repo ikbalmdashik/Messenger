@@ -1,6 +1,6 @@
 "use client"
 
-import { Spinner } from "@/components/ui/spinner";
+import { FullScreenSpinner } from "@/app/components/spinner";
 import dynamic from "next/dynamic";
 
 const Chat = () => {
@@ -9,8 +9,8 @@ const Chat = () => {
         {
             loading: () => {
                 return (
-                    <div className="bg-white dark:bg-slate-950 flex items-center justify-center min-h-screen">
-                        <Spinner size={50} />
+                    <div className="flex items-center justify-center min-h-screen">
+                        <FullScreenSpinner size={"3"}/>
                     </div>
                 );
             },
