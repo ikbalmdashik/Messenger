@@ -52,7 +52,7 @@ export class AuthTokenEntity {
   token: string;
 
   @Column()
-  type: 'RESET_PASSWORD' | 'VERIFY_EMAIL';
+  type: 'RESET_PASSWORD' | 'VERIFY_EMAIL' | 'VERIFY_LOGIN';
 
   @Column()
   expiresAt: Date;

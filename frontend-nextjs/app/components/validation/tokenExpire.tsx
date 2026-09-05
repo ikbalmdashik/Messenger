@@ -1,63 +1,111 @@
 "use client";
 
-import Routes from "@/app/routes/routes";
+import React from "react";
 import { useRouter } from "next/navigation";
+import {
+  Box,
+  Button,
+  Card,
+  Flex,
+  Heading,
+  Text,
+} from "@radix-ui/themes";
+import { AlertTriangle } from "lucide-react";
+
+import Routes from "@/app/routes/routes";
 
 const TokenExpire: React.FC = () => {
-    const router = useRouter();
-    return (
-        <div className="min-h-screen flex items-center justify-center px-4 bg-white text-gray-900 dark:bg-gray-950 dark:text-white transition-colors">
+  const router = useRouter();
 
-            <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg p-6 sm:p-8 text-center">
+  return (
+    <Flex
+      align="center"
+      justify="center"
+      px="4"
+      style={{
+        minHeight: "100dvh",
+      }}
+    >
+      <Card
+        size="3"
+        variant="ghost"
+        style={{
+          width: "100%",
+          maxWidth: 420,
+        }}
+      >
+        <Flex
+          direction="column"
+          align="center"
+          gap="5"
+          p={{ initial: "2", sm: "4" }}
+        >
+          {/* Warning Icon */}
+          <Flex
+            align="center"
+            justify="center"
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: "50%",
+              background: "var(--red-3)",
+              color: "var(--red-11)",
+            }}
+          >
+            <AlertTriangle size={34} strokeWidth={2.2} />
+          </Flex>
 
-                {/* Icon */}
-                <div className="mx-auto mb-5 flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-                    <svg
-                        className="h-7 w-7 sm:h-8 sm:w-8 text-red-500 dark:text-red-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                    >
-                        <path
-                            strokeWidth={2}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M12 9v4m0 4h.01M10.29 3.86l-8.2 14.2A2 2 0 003.8 21h16.4a2 2 0 001.71-3.04l-8.2-14.2a2 2 0 00-3.42 0z"
-                        />
-                    </svg>
-                </div>
+          {/* Heading */}
+          <Flex direction="column" align="center" gap="2">
+            <Heading size="6" weight="bold" align="center">
+              Token Expired
+            </Heading>
 
-                {/* Title */}
-                <h1 className="text-xl sm:text-2xl font-semibold">
-                    Token Expired
-                </h1>
+            <Text
+              size="3"
+              color="gray"
+              align="center"
+              style={{
+                maxWidth: 350,
+                lineHeight: 1.6,
+              }}
+            >
+              Your session link has expired or is no longer valid.
+              <br />
+              Please request a new link to continue securely.
+            </Text>
+          </Flex>
 
-                {/* Message */}
-                <p className="mt-3 text-sm sm:text-base text-gray-600 dark:text-gray-400 leading-relaxed">
-                    Your session link has expired or is no longer valid.
-                    <br className="hidden sm:block" />
-                    Please request a new link to continue securely.
-                </p>
+          {/* Action */}
+          <Box style={{ width: "100%" }}>
+            <Button
+              size="2"
+              variant="solid"
+              color="red"
+              style={{
+                width: "100%",
+                cursor: "pointer",
+              }}
+              onClick={() => router.replace(Routes.Login)}
+            >
+              Go Back to Login
+            </Button>
+          </Box>
 
-                {/* Buttons */}
-                <div className="mt-6 flex flex-col gap-3">
+          {/* Footer */}
+          <Flex direction="column" align="center" gap="1">
+            <Text size="1" color="gray" align="center">
+              For your security, tokens expire after a limited time.
+            </Text>
 
-                    <button
-                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition active:scale-[0.98]"
-                        onClick={() => router.replace(Routes.Login)}
-                        >
-                            Go Back to Login
-                    </button>
-                </div>
-
-                {/* Footer */}
-                <p className="mt-5 text-xs text-gray-400 dark:text-gray-500">
-                    For your security, tokens expire after a limited time <br />
-                    You may request a new one if needed.
-                </p>
-            </div>
-        </div>
-    );
+            <Text size="1" color="gray" align="center">
+              You may request a new one if needed.
+            </Text>
+          </Flex>
+        </Flex>
+      </Card>
+    </Flex>
+  );
 };
 
 export default TokenExpire;

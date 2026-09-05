@@ -27,33 +27,23 @@ export class AuthController {
   @Post('/sendLink')
   async sendLink(
     @Body('email') email: string,
-    @Body('type') type: 'VERIFY_EMAIL' | 'RESET_PASSWORD',
+    @Body('type') type: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_LOGIN',
   ) {
     return await this.mailService.Send_Link(email, type);
   }
 
   @Get('/validate')
-  async validateToken(@Query('token') token: string, @Res({ passthrough: true }) res: Response) {
+  async validateToken(@Query('token') token: string) {
     if (!token) {
       throw new BadRequestException('Token is required');
     }
-
     const result = await this.authService.validateTokenAndProcess(token);
-
-    res.cookie('token', result.token, {
-      httpOnly: true,
-      secure: false,       // true in production (HTTPS)
-      sameSite: 'lax',     // allows sending cookie cross-origin on localhost
-      maxAge: 1000 * 60 * 15, // 15 minutes
-    });
-
     return result;
   }
 
   @Post('/resetPassword')
-  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
-    const { newPassword } = dto;
-    const token = req.cookies?.token;
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    const { token, newPassword } = dto;
 
     if (!token || !newPassword) {
       throw new BadRequestException('Token and password are required.');

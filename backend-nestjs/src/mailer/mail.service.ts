@@ -35,43 +35,85 @@ export class MailService {
 
 
     // Send Email
-    async Send_Link(to: string, type: 'VERIFY_EMAIL' | 'RESET_PASSWORD') {
-        const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', 64);
-        const token = nanoid();
-        const link = `${this.configService.get("FRONTEND_URL")}/pages/validation/${token}`;
+    async Send_Link(
+        to: string,
+        type: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_LOGIN',
+    ) {
+        const tokenLength = type === 'VERIFY_LOGIN' ? 8 : 64;
+
+        const generateToken = customAlphabet(
+            '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+            tokenLength,
+        );
+
+        const token = generateToken();
+
+        const link = `${this.configService.get(
+            'FRONTEND_URL',
+        )}/pages/validation/${token}`;
 
         const mailOptions = {
             from: this.configService.get('EMAIL_USER'),
             to,
-            subject: `Request For ${type == "RESET_PASSWORD" ? "Rest Password." : "Verify Email."}`,
-            html: await Email_Template(type, link)
+
+            subject:
+                type === 'RESET_PASSWORD'
+                    ? 'Reset Your Password'
+                    : type === 'VERIFY_LOGIN'
+                        ? 'Login Verification'
+                        : 'Verify Your Email',
+
+            html: await Email_Template(
+                type,
+                link,
+                type === 'VERIFY_LOGIN' ? token : undefined,
+            ),
         };
 
         try {
-            const user = await this.user_repo.findOneBy({ email: to });
+            const user = await this.user_repo.findOneBy({
+                email: to,
+            });
 
-            if (type === "VERIFY_EMAIL" && user.isEmailVerified === true) {
-                return { message: "Email is already verified." }
-            } else {
-                await this.auth_repo.save({
-                    userId: user.userId,
-                    token: token,
-                    type: type,
-                    createdAt: new Date(),
-                    expiresAt: new Date(Date.now() + 1000 * 60 * 15),
-                });
-
-                await this.transporter.sendMail(mailOptions);
-
-                return {
-                    message:
-                        type === 'VERIFY_EMAIL'
-                            ? 'Verification email sent'
-                            : 'Password reset email sent',
-                }
+            if (!user) {
+                throw new Error('User not found');
             }
+
+            if (
+                type === 'VERIFY_EMAIL' &&
+                user.isEmailVerified === true
+            ) {
+                return {
+                    message: 'Email is already verified.',
+                };
+            }
+
+            await this.auth_repo.save({
+                userId: user.userId,
+                token: token,
+                type: type,
+                createdAt: new Date(),
+                expiresAt: new Date(
+                    Date.now() + 1000 * 60 * 15,
+                ),
+                used: false,
+            });
+
+            await this.transporter.sendMail(mailOptions);
+
+            return {
+                success: true,
+                message:
+                    type === 'VERIFY_EMAIL'
+                        ? 'Verification email sent'
+                        : type === 'RESET_PASSWORD'
+                            ? 'Password reset email sent'
+                            : 'Login verification code sent',
+            };
         } catch (error) {
-            throw new Error(`Error sending email: ${error}`);
+            throw new Error(
+                `Error sending email: ${error instanceof Error ? error.message : error}`,
+            );
         }
     }
 }

@@ -41,7 +41,7 @@ export type ContactOption = {
 };
 
 export type VerificationPurpose =
-    | "LOGIN"
+    | "VERIFY_LOGIN"
     | "FORGOT_PASSWORD"
     | "CHANGE_PASSWORD"
     | "VERIFY_EMAIL";
@@ -89,7 +89,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
 
     contactOptions = [],
 
-    purpose = "LOGIN",
+    purpose = "VERIFY_LOGIN",
 
     onSubmitPassword,
     onPasswordReset,
@@ -401,10 +401,10 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             );
 
             /* =============================================
-               LOGIN
+               VERIFY_LOGIN
             ============================================= */
 
-            if (purpose === "LOGIN") {
+            if (purpose === "VERIFY_LOGIN") {
                 await onOtpVerified?.();
 
                 return;

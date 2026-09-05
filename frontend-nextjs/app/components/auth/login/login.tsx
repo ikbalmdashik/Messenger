@@ -1074,7 +1074,7 @@ const MultiStepLogin = () => {
                             }
                         }}
 
-                        purpose="LOGIN"
+                        purpose="VERIFY_LOGIN"
 
                         subtitleAccount={
                             email ||

@@ -118,18 +118,33 @@ export class AuthService {
       };
     }
 
-    // If token is for password reset
     if (record.type === 'RESET_PASSWORD') {
       return {
         success: true,
-        action: 'RESET_PASSWORD_ALLOWED',
-        message: 'Token valid. You can reset password now.',
-        token: token, // frontend will reuse this
+        action: 'RESET_PASSWORD',
+        message: 'You can reset your password now.',
         isUsed: record.used,
-        userId: user.userId,
         email: user.email,
       };
     }
+
+    if (record.type === 'VERIFY_LOGIN') {
+      return {
+        success: true,
+        action: 'VERIFY_LOGIN',
+        message: 'You login is verified.',
+        isUsed: record.used,
+        email: user.email,
+      };
+    }
+
+    return {
+        success: true,
+        action: 'SOME_ACTIONS',
+        message: 'Some message.',
+        isUsed: record.used,
+        email: user.email,
+      };
   }
 
   

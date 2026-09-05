@@ -61,8 +61,10 @@ export default function PasswordChange({ token }: PasswordChangeProps) {
 
             const res = await axios.post(
                 API_ENDPOINTS.UpdatePassword,
-                { newPassword },
-                { withCredentials: true } // important for HTTP-only cookie
+                {
+                    token: token,
+                    newPassword: newPassword
+                },
             )
 
             if (res.data.success) setStep(2)
@@ -86,11 +88,11 @@ export default function PasswordChange({ token }: PasswordChangeProps) {
 
     return (
         <div className="flex items-center justify-center min-h-[100dvh] px-4 bg-white dark:bg-slate-950 transition-colors">
-            
+
             <form onSubmit={handleSubmit(onSubmit)} className="w-full max-w-md">
                 <h1 className="font-bold text-xl md:text-4xl flex justify-center items-center gap-2 bg-gradient-to-r mb-8 from-sky-500 to-indigo-500 bg-clip-text text-transparent">
-                <MessageCircle className="w-8 h-8 text-sky-500" /> Messenger
-            </h1>
+                    <MessageCircle className="w-8 h-8 text-sky-500" /> Messenger
+                </h1>
                 <Card className="border-none dark:text-white text-black shadow-md dark:bg-white/5 bg-black/5 backdrop-blur-md flex flex-col justify-between">
                     <CardHeader className="text-center">
                         <CardTitle className="text-2xl">

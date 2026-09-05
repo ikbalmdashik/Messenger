@@ -5,5 +5,6 @@ export class UpdateAuthDto extends PartialType(CreateAuthDto) {}
 
 
 export class ResetPasswordDto {
+  token: string;
   newPassword: string;
 }

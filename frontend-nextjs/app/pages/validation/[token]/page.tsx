@@ -8,6 +8,7 @@ import { FullScreenSpinner } from "@/app/components/spinner";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 import { use, useEffect, useRef, useState } from "react";
+import PasswordChange from "@/app/components/secure-session/passwordChange";
 
 interface ValidationProps {
   params: Promise<{
@@ -34,15 +35,15 @@ const Validation = ({ params }: ValidationProps) => {
           params: { token },
         });
 
-        console.log("API Response:", res.data); // Add this
         const action = res.data?.action;
 
-        if (action === "RESET_PASSWORD_ALLOWED") {
+        console.log(action)
+
+        if (action === "RESET_PASSWORD") {
           setStatus("valid1");
         } else if (action === "EMAIL_VERIFIED") {
           setStatus("valid2");
         } else {
-          console.log("Unknown action:", action); // Add this
           setStatus("expired");
         }
       } catch (error: any) {
@@ -57,7 +58,7 @@ const Validation = ({ params }: ValidationProps) => {
         }
       }
     };
-    
+
     if (token) {
       validateToken();
     }
@@ -81,13 +82,15 @@ const Validation = ({ params }: ValidationProps) => {
     );
   }
 
-  console.log(status);
+  if (status === "valid1") {
+    return <PasswordChange token={token} />
+  }
 
   if (status === "valid2") {
     return <EmailVerifiedSuccess />;
   }
 
-  if (status === "valid1" || status === "notfound") {
+  if (status === "notfound") {
     return null;
   }
 
