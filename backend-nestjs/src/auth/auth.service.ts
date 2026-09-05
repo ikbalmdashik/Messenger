@@ -64,15 +64,83 @@ export class AuthService {
 
   // login
   async validateUser(loginDto: LoginDto) {
-    const isEmailExist = await this.IsEmailExist(loginDto.email);
+    const { email, password, otp } = loginDto;
 
-    if (isEmailExist) {
-      const getEmailData = await this.userRepository.findOne({ where: { email: loginDto.email } });
-      const isPasswordValid = await bcrypt.compare(loginDto.password, getEmailData.password);
-      return isPasswordValid ? getEmailData : { message: "Wrong password" };
-    } else {
-      return { message: "Email not found!" }
+    // Find user
+    const user = await this.userRepository.findOne({
+      where: { email },
+    });
+
+    if (!user) {
+      return {
+        success: false,
+        message: 'Email not found!',
+      };
     }
+
+    // =====================================================
+    // LOGIN USING OTP
+    // =====================================================
+    if (otp) {
+      const otpRecord = await this.auth_repo.findOne({
+        where: {
+          userId: user.userId,
+          token: otp,
+          type: 'VERIFY_LOGIN',
+          used: false,
+        },
+      });
+
+      if (!otpRecord) {
+        return {
+          success: false,
+          message: 'Invalid or already used OTP',
+        };
+      }
+
+      // Check OTP expiration
+      if (new Date() > new Date(otpRecord.expiresAt)) {
+        return {
+          success: false,
+          message: 'OTP has expired',
+        };
+      }
+
+      // Mark OTP as used
+      otpRecord.used = true;
+      await this.auth_repo.save(otpRecord);
+
+      return user;
+    }
+
+    // =====================================================
+    // LOGIN USING PASSWORD
+    // =====================================================
+    if (password) {
+      const isPasswordValid = await bcrypt.compare(
+        password,
+        user.password,
+      );
+
+      console.log(password)
+
+      if (!isPasswordValid) {
+        return {
+          success: false,
+          message: 'Wrong password',
+        };
+      }
+
+      return user;
+    }
+
+    // =====================================================
+    // NEITHER PASSWORD NOR OTP PROVIDED
+    // =====================================================
+    return {
+      success: false,
+      message: 'Password or OTP is required',
+    };
   }
 
   async validateTokenAndProcess(token: string) {
@@ -139,15 +207,13 @@ export class AuthService {
     }
 
     return {
-        success: true,
-        action: 'SOME_ACTIONS',
-        message: 'Some message.',
-        isUsed: record.used,
-        email: user.email,
-      };
+      success: true,
+      action: 'SOME_ACTIONS',
+      message: 'Some message.',
+      isUsed: record.used,
+      email: user.email,
+    };
   }
-
-  
 
   async change_password(token: string, newPassword: string) {
     // 1️ Find token in DB

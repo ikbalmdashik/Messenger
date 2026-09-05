@@ -395,11 +395,6 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                 }
             );
 
-            console.log(
-                "OTP verified:",
-                response.data
-            );
-
             /* =============================================
                VERIFY_LOGIN
             ============================================= */
@@ -990,6 +985,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                             variant="ghost"
                                             color="indigo"
                                             size="2"
+                                            disabled={
+                                                isSendingOtp
+                                            }
                                             onClick={
                                                 handleSwitchToPassword
                                             }

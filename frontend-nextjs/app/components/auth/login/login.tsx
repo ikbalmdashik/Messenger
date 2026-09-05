@@ -438,6 +438,23 @@ const MultiStepLogin = () => {
         useCallback(() => {
             if (!authPayload) return;
 
+            if (authPayload.isEmailVerified) {
+                        sessionStorage.setItem(
+                            "loginId",
+                            authPayload.userId
+                        );
+
+                        router.push(
+                            Routes.Chat
+                        );
+                    } else {
+                        /*
+                         * Password is correct,
+                         * but email is not verified.
+                         */
+                        setStep(5);
+                    }
+
             sessionStorage.setItem(
                 "loginId",
                 authPayload.userId

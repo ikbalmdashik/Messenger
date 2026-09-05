@@ -16,5 +16,6 @@ export class UpdateUserDto {
 
 export class LoginDto {
     email: string;
-    password: string;
+    password?: string;
+    otp?: string;
 }
