@@ -60,12 +60,31 @@ export type PasswordModalProps = {
 
     purpose?: VerificationPurpose;
 
-    onSubmitPassword: () => void | Promise<boolean | void>;
+    /*
+     * Kept for compatibility with your existing parent.
+     * Password verification is now handled inside this modal.
+     */
+    onSubmitPassword?: () => void | Promise<boolean | void>;
 
+    /*
+     * Kept for compatibility.
+     * Password update is now handled inside this modal.
+     */
     onPasswordReset?: (
         newPassword: string
     ) => Promise<boolean | void> | boolean | void;
 
+    /*
+     * Parent is responsible ONLY for what happens
+     * after the complete verification flow succeeds.
+     */
+    onVerifySuccess?: (
+        method: "PASSWORD" | "OTP"
+    ) => void | Promise<void>;
+
+    /*
+     * Kept for compatibility with your previous implementation.
+     */
     onSuccessNext?: () => void | Promise<void>;
 
     onOtpVerified?: () => void | Promise<void>;
@@ -91,10 +110,12 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
 
     purpose = "VERIFY_LOGIN",
 
-    onSubmitPassword,
-    onPasswordReset,
+    onVerifySuccess,
+
     onSuccessNext,
+
     onOtpVerified,
+
     onSwitchAccount,
 }) => {
     /* =====================================================
@@ -111,10 +132,12 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
         useState(false);
 
     const [viewMode, setViewMode] = useState<
-        "PASSWORD" |
-        "SELECT_CONTACT" |
-        "ENTER_OTP" |
-        "SET_PASSWORD"
+        | "PASSWORD"
+        | "SELECT_CONTACT"
+        | "ENTER_OTP"
+        | "OTP_SUCCESS"
+        | "SET_PASSWORD"
+        | "PASSWORD_UPDATED"
     >("PASSWORD");
 
     const [selectedContactId, setSelectedContactId] =
@@ -171,12 +194,20 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             return;
         }
 
+        /*
+         * Do not automatically remove the password-updated
+         * message because the user needs to press Continue.
+         */
+        if (viewMode === "PASSWORD_UPDATED") {
+            return;
+        }
+
         const timer = setTimeout(() => {
             setSuccessMessage(null);
         }, 5000);
 
         return () => clearTimeout(timer);
-    }, [successMessage]);
+    }, [successMessage, viewMode]);
 
     /* =====================================================
        RESET WHEN MODAL CLOSES
@@ -241,11 +272,40 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     };
 
     /* =====================================================
+       FINAL SUCCESS
+    ===================================================== */
+
+    const handleVerifySuccess = async (
+        method: "PASSWORD" | "OTP"
+    ) => {
+        /*
+         * Parent is responsible only for what happens
+         * after verification is completely successful.
+         */
+        if (onVerifySuccess) {
+            await onVerifySuccess(method);
+            return;
+        }
+
+        /*
+         * Backward compatibility with your previous
+         * onSuccessNext callback.
+         */
+        if (onSuccessNext) {
+            await onSuccessNext();
+            return;
+        }
+
+        onOpenChange(false);
+    };
+
+    /* =====================================================
        SWITCH TO TRY ANOTHER WAY
     ===================================================== */
 
     const handleSwitchToTryAnotherWay = () => {
         setApiError(null);
+        setSuccessMessage(null);
 
         resetField("password");
 
@@ -264,6 +324,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
 
     const handleSwitchToPassword = () => {
         setApiError(null);
+        setSuccessMessage(null);
 
         resetField("otpCode");
 
@@ -303,6 +364,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
         }
 
         setApiError(null);
+        setSuccessMessage(null);
         setIsSendingOtp(true);
 
         try {
@@ -317,11 +379,6 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                 }
             );
 
-            console.log(
-                "OTP sent successfully:",
-                response.data
-            );
-
             setSentContactLabel(
                 contact.type === "email"
                     ? contact.value
@@ -334,6 +391,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
 
             resetField("otpCode");
 
+            setSuccessMessage(`OTP sent successfully to ${contact.value}.`)
             setViewMode("ENTER_OTP");
         } catch (error) {
             console.error(
@@ -380,11 +438,12 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
         }
 
         setApiError(null);
+        setSuccessMessage(null);
         setIsVerifyingOtp(true);
 
         try {
             const response = await axios.post(
-                API_ENDPOINTS.VerifyOtp,
+                API_ENDPOINTS.LoginAuth,
                 {
                     email: sentContactValue,
                     otp,
@@ -395,46 +454,49 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                 }
             );
 
-            /* =============================================
-               VERIFY_LOGIN
-            ============================================= */
+            console.log(
+                "OTP verification response:",
+                response.data
+            );
 
-            if (purpose === "VERIFY_LOGIN") {
-                await onOtpVerified?.();
-
-                return;
-            }
-
-            /* =============================================
-               FORGOT PASSWORD
-            ============================================= */
-
+            /*
+             * If backend explicitly returns success:false,
+             * treat it as a failed verification.
+             */
             if (
-                purpose ===
-                "FORGOT_PASSWORD"
+                response.data?.success === false
             ) {
-                resetField("newPassword");
-                resetField("confirmPassword");
-
-                setViewMode(
-                    "SET_PASSWORD"
+                setApiError(
+                    response.data?.message ||
+                    "OTP verification failed."
                 );
 
                 return;
             }
 
-            /* =============================================
-               CHANGE PASSWORD / VERIFY EMAIL
-            ============================================= */
+            /*
+             * OTP verification succeeded.
+             *
+             * IMPORTANT:
+             * We do NOT call onVerifySuccess yet.
+             *
+             * User must now decide:
+             *   1. Update Password
+             *   2. Skip for now
+             */
+            setViewMode("OTP_SUCCESS");
 
             setSuccessMessage(
                 "Verification successful!"
             );
 
-            if (onSuccessNext) {
-                await onSuccessNext();
-            } else {
-                onOpenChange(false);
+            /*
+             * Kept for compatibility with existing
+             * parent code, but final success is controlled
+             * through onVerifySuccess.
+             */
+            if (onOtpVerified) {
+                await onOtpVerified();
             }
         } catch (error) {
             console.error(
@@ -448,6 +510,34 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
         } finally {
             setIsVerifyingOtp(false);
         }
+    };
+
+    /* =====================================================
+       OTP SUCCESS
+    ===================================================== */
+
+    const handleUpdatePasswordAfterOtp = () => {
+        setApiError(null);
+        setSuccessMessage(null);
+
+        resetField("newPassword");
+        resetField("confirmPassword");
+
+        setViewMode("SET_PASSWORD");
+    };
+
+    /* =====================================================
+       SKIP PASSWORD UPDATE
+    ===================================================== */
+
+    const handleSkipPasswordUpdate = async () => {
+        setApiError(null);
+
+        /*
+         * OTP verification is already successful.
+         * Therefore the parent now takes over.
+         */
+        await handleVerifySuccess("OTP");
     };
 
     /* =====================================================
@@ -475,50 +565,25 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             return;
         }
 
+        if (!sentContactValue) {
+            setApiError(
+                "Verification contact is missing."
+            );
+
+            return;
+        }
+
         setApiError(null);
+        setSuccessMessage(null);
         setIsResettingPassword(true);
 
         try {
-            /* =============================================
-               PARENT PASSWORD RESET HANDLER
-            ============================================= */
-
-            if (onPasswordReset) {
-                const result =
-                    await onPasswordReset(
-                        newPassword
-                    );
-
-                if (result === false) {
-                    return;
-                }
-
-                setSuccessMessage(
-                    "Password updated successfully!"
-                );
-
-                if (onSuccessNext) {
-                    await onSuccessNext();
-                } else {
-                    onOpenChange(false);
-                }
-
-                return;
-            }
-
-            /* =============================================
-               INTERNAL PASSWORD RESET API
-            ============================================= */
-
             const response =
                 await axios.post(
-                    API_ENDPOINTS.ResetPassword,
+                    API_ENDPOINTS.UpdatePassword,
                     {
-                        email:
-                            sentContactValue,
-                        newPassword,
-                        type:
-                            "FORGOT_PASSWORD",
+                        token: watch("otpCode"),
+                        newPassword: newPassword,
                     },
                     {
                         withCredentials: true,
@@ -526,22 +591,42 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                 );
 
             console.log(
-                "Password reset successfully:",
+                "Password update response:",
                 response.data
             );
 
+            /*
+             * Handle APIs that return success:false
+             * without throwing an HTTP error.
+             */
+            if (
+                response.data?.success === false
+            ) {
+                setApiError(
+                    response.data?.message ||
+                    "Password update failed."
+                );
+
+                return;
+            }
+
+            /*
+             * Password was successfully updated.
+             *
+             * DO NOT call onVerifySuccess yet.
+             *
+             * Show Continue first.
+             */
             setSuccessMessage(
                 "Password updated successfully!"
             );
 
-            if (onSuccessNext) {
-                await onSuccessNext();
-            } else {
-                onOpenChange(false);
-            }
+            setViewMode(
+                "PASSWORD_UPDATED"
+            );
         } catch (error) {
             console.error(
-                "Password reset failed:",
+                "Password update failed:",
                 error
             );
 
@@ -554,7 +639,22 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     };
 
     /* =====================================================
-       PASSWORD SUBMIT
+       CONTINUE AFTER PASSWORD UPDATE
+    ===================================================== */
+
+    const handleContinueAfterPasswordUpdate =
+        async () => {
+            setApiError(null);
+
+            /*
+             * Password update has already succeeded.
+             * Now the parent decides what happens next.
+             */
+            await handleVerifySuccess("OTP");
+        };
+
+    /* =====================================================
+       PASSWORD VERIFY API
     ===================================================== */
 
     const handlePasswordSubmit = async () => {
@@ -569,20 +669,81 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             return;
         }
 
+        const password =
+            watch("password");
+
+        if (!password) {
+            return;
+        }
+
+        if (!subtitleAccount) {
+            setApiError(
+                "Account email is missing."
+            );
+
+            return;
+        }
+
         setApiError(null);
+        setSuccessMessage(null);
         setIsSubmittingPassword(true);
 
         try {
-            const success =
-                await onSubmitPassword();
+            /*
+             * PASSWORD VERIFICATION API
+             *
+             * Change ValidateUser only if your
+             * API_ENDPOINTS uses another key.
+             */
+            const response =
+                await axios.post(
+                    API_ENDPOINTS.LoginAuth,
+                    {
+                        email:
+                            subtitleAccount,
+                        password: password,
+                        type: purpose,
+                    },
+                    {
+                        withCredentials: true,
+                    }
+                );
 
-            if (success !== false) {
-                if (onSuccessNext) {
-                    await onSuccessNext();
-                } else {
-                    onOpenChange(false);
-                }
+            console.log(
+                "Password verification response:",
+                response.data
+            );
+
+            /*
+             * Backend can return:
+             *
+             * {
+             *   success: false,
+             *   message: "Invalid password"
+             * }
+             *
+             * instead of throwing an HTTP error.
+             */
+            if (
+                response.data?.success === false
+            ) {
+                setApiError(
+                    response.data?.message ||
+                    "Invalid password."
+                );
+
+                return;
             }
+
+            /*
+             * PASSWORD VERIFICATION SUCCESS
+             *
+             * No additional action is handled here.
+             * Parent takes over.
+             */
+            await handleVerifySuccess(
+                "PASSWORD"
+            );
         } catch (error) {
             console.error(
                 "Password verification failed:",
@@ -612,8 +773,14 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             case "ENTER_OTP":
                 return "Enter Verification Code";
 
+            case "OTP_SUCCESS":
+                return "Verification Successful";
+
             case "SET_PASSWORD":
                 return "Create New Password";
+
+            case "PASSWORD_UPDATED":
+                return "Password Updated";
 
             default:
                 return title;
@@ -751,6 +918,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                     opacity: 0,
                                     y: -10,
                                 }}
+                                transition={{
+                                    duration: 0.2,
+                                }}
                                 className="w-full my-2"
                             >
                                 <Box
@@ -798,7 +968,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                     >
                         <AnimatePresence mode="wait">
 
-                            {/* PASSWORD */}
+                            {/* =================================================
+                                PASSWORD
+                            ================================================= */}
 
                             {viewMode ===
                                 "PASSWORD" && (
@@ -846,11 +1018,11 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                                         handleSwitchToTryAnotherWay
                                                     }
                                                     className="
-                                                    cursor-pointer
-                                                    hover:underline
-                                                    p-0
-                                                    h-auto
-                                                "
+                                                        cursor-pointer
+                                                        hover:underline
+                                                        p-0
+                                                        h-auto
+                                                    "
                                                 >
                                                     Try another way?
                                                 </Button>
@@ -957,7 +1129,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                     </motion.div>
                                 )}
 
-                            {/* SELECT CONTACT */}
+                            {/* =================================================
+                                SELECT CONTACT
+                            ================================================= */}
 
                             {viewMode ===
                                 "SELECT_CONTACT" && (
@@ -1091,7 +1265,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                     </motion.div>
                                 )}
 
-                            {/* OTP */}
+                            {/* =================================================
+                                ENTER OTP
+                            ================================================= */}
 
                             {viewMode ===
                                 "ENTER_OTP" && (
@@ -1114,18 +1290,6 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                         }}
                                         className="space-y-4"
                                     >
-                                        <Box className="p-2.5 text-center">
-                                            <Text size="2">
-                                                OTP sent successfully
-                                                to{" "}
-                                                <strong>
-                                                    {sentContactLabel ||
-                                                        "your contact"}
-                                                </strong>
-                                                .
-                                            </Text>
-                                        </Box>
-
                                         <Box>
                                             <Box mb="2">
                                                 <Text
@@ -1142,12 +1306,16 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                                 id="otpCode"
                                                 type="text"
                                                 placeholder="Enter verification code"
-                                                {...register("otpCode", {
-                                                    required:
-                                                        viewMode === "ENTER_OTP"
-                                                            ? "Verification code is required"
-                                                            : false,
-                                                })}
+                                                {...register(
+                                                    "otpCode",
+                                                    {
+                                                        required:
+                                                            viewMode ===
+                                                                "ENTER_OTP"
+                                                                ? "Verification code is required"
+                                                                : false,
+                                                    }
+                                                )}
                                             >
                                                 <TextField.Slot>
                                                     <ShieldCheck className="w-5 h-5 text-indigo-500" />
@@ -1187,18 +1355,18 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                                 color="gray"
                                                 size="1"
                                                 ml="2"
-                                                onClick={() =>
-                                                    setViewMode(
-                                                        "SELECT_CONTACT"
-                                                    )
+                                                onClick={() => {
+                                                    setViewMode("SELECT_CONTACT")
+                                                    setApiError(null);
+                                                    setSuccessMessage(null);
+                                                }
                                                 }
                                                 disabled={
                                                     isVerifyingOtp ||
                                                     isSendingOtp
                                                 }
                                             >
-                                                Change Contact
-                                                Method
+                                                Change Contact Method
                                             </Button>
 
                                             <Button
@@ -1233,9 +1401,10 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                                 "verifyOtp"
                                             }
                                             disabled={
-                                                isVerifyingOtp ||
+                                                isVerifyingOtp || isSendingOtp ||
                                                 loadingState ===
                                                 "verifyOtp"
+                                                
                                             }
                                             style={{
                                                 width: "100%",
@@ -1246,7 +1415,71 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                     </motion.div>
                                 )}
 
-                            {/* SET PASSWORD */}
+                            {/* =================================================
+                                OTP SUCCESS
+                            ================================================= */}
+
+                            {viewMode ===
+                                "OTP_SUCCESS" && (
+                                    <motion.div
+                                        key="otp-success-view"
+                                        initial={{
+                                            opacity: 0,
+                                            x: 20,
+                                        }}
+                                        animate={{
+                                            opacity: 1,
+                                            x: 0,
+                                        }}
+                                        exit={{
+                                            opacity: 0,
+                                            x: -20,
+                                        }}
+                                        transition={{
+                                            duration: 0.2,
+                                        }}
+                                        className="space-y-4"
+                                    >
+                                        <Box className="p-2.5 text-center">
+                                            <Text size="2">
+                                                Your identity has
+                                                been successfully
+                                                verified.
+                                            </Text>
+                                        </Box>
+
+                                        <Button
+                                            type="button"
+                                            onClick={
+                                                handleUpdatePasswordAfterOtp
+                                            }
+                                            style={{
+                                                width: "100%",
+                                            }}
+                                        >
+                                            Update Password
+                                        </Button>
+
+                                        <Button
+                                            type="button"
+                                            variant="soft"
+                                            color="gray"
+                                            mt={"2"}
+                                            onClick={
+                                                handleSkipPasswordUpdate
+                                            }
+                                            style={{
+                                                width: "100%",
+                                            }}
+                                        >
+                                            Skip for now
+                                        </Button>
+                                    </motion.div>
+                                )}
+
+                            {/* =================================================
+                                SET PASSWORD
+                            ================================================= */}
 
                             {viewMode ===
                                 "SET_PASSWORD" && (
@@ -1408,11 +1641,59 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                         </Button>
                                     </motion.div>
                                 )}
+
+                            {/* =================================================
+                                PASSWORD UPDATED
+                            ================================================= */}
+
+                            {viewMode ===
+                                "PASSWORD_UPDATED" && (
+                                    <motion.div
+                                        key="password-updated-view"
+                                        initial={{
+                                            opacity: 0,
+                                            x: 20,
+                                        }}
+                                        animate={{
+                                            opacity: 1,
+                                            x: 0,
+                                        }}
+                                        exit={{
+                                            opacity: 0,
+                                            x: -20,
+                                        }}
+                                        transition={{
+                                            duration: 0.2,
+                                        }}
+                                        className="space-y-4"
+                                    >
+                                        <Box className="p-2.5 text-center">
+                                            <Text size="2">
+                                                Your password has
+                                                been updated
+                                                successfully.
+                                            </Text>
+                                        </Box>
+
+                                        <Button
+                                            type="button"
+                                            onClick={
+                                                handleContinueAfterPasswordUpdate
+                                            }
+                                            style={{
+                                                width: "100%",
+                                            }}
+                                        >
+                                            Continue
+                                        </Button>
+                                    </motion.div>
+                                )}
+
                         </AnimatePresence>
                     </Box>
                 </Flex>
             </AlertDialog.Content>
-        </AlertDialog.Root>
+        </AlertDialog.Root >
     );
 };
 

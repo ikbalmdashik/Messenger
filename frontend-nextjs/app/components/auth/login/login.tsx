@@ -390,10 +390,6 @@ const MultiStepLogin = () => {
                             Routes.Chat
                         );
                     } else {
-                        /*
-                         * Password is correct,
-                         * but email is not verified.
-                         */
                         setStep(5);
                     }
 
@@ -411,7 +407,7 @@ const MultiStepLogin = () => {
                 setPasswordError(
                     error?.response?.data
                         ?.message ||
-                        "Incorrect password. Please try again."
+                    "Incorrect password. Please try again."
                 );
 
                 return false;
@@ -439,21 +435,17 @@ const MultiStepLogin = () => {
             if (!authPayload) return;
 
             if (authPayload.isEmailVerified) {
-                        sessionStorage.setItem(
-                            "loginId",
-                            authPayload.userId
-                        );
+                sessionStorage.setItem(
+                    "loginId",
+                    authPayload.userId
+                );
 
-                        router.push(
-                            Routes.Chat
-                        );
-                    } else {
-                        /*
-                         * Password is correct,
-                         * but email is not verified.
-                         */
-                        setStep(5);
-                    }
+                router.push(
+                    Routes.Chat
+                );
+            } else {
+                setStep(5);
+            }
 
             sessionStorage.setItem(
                 "loginId",
@@ -472,13 +464,6 @@ const MultiStepLogin = () => {
             router,
         ]);
 
-    /*
-     * Password login success.
-     *
-     * This is separate from OTP success
-     * because an unverified account must
-     * go to Step 5.
-     */
     const handleSuccessNextStep =
         useCallback(() => {
             setIsPasswordAlertOpen(
@@ -827,7 +812,7 @@ const MultiStepLogin = () => {
                                 }
                             >
                                 {resendCooldown >
-                                0 ? (
+                                    0 ? (
                                     <Flex
                                         align="center"
                                         gap="2"
@@ -1015,7 +1000,7 @@ const MultiStepLogin = () => {
                                             <Callout.Root
                                                 color={
                                                     notification.type ===
-                                                    "success"
+                                                        "success"
                                                         ? "green"
                                                         : "red"
                                                 }
@@ -1024,7 +1009,7 @@ const MultiStepLogin = () => {
                                             >
                                                 <Callout.Icon>
                                                     {notification.type ===
-                                                    "success" ? (
+                                                        "success" ? (
                                                         <CheckCircle2 className="w-4 h-4" />
                                                     ) : (
                                                         <AlertCircle className="w-4 h-4" />
