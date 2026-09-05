@@ -1,61 +1,102 @@
 "use client";
 
-import Routes from "@/app/routes/routes";
+import React from "react";
 import { useRouter } from "next/navigation";
+import {
+  Box,
+  Button,
+  Card,
+  Flex,
+  Heading,
+  Text,
+} from "@radix-ui/themes";
+import { Frown } from "lucide-react";
+
+import Routes from "@/app/routes/routes";
 
 const NotFoundPage: React.FC = () => {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-white text-gray-900 dark:bg-gray-950 dark:text-white transition-colors">
-
-      <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg p-6 sm:p-8 text-center">
-
-        {/* Icon */}
-        <div className="mx-auto mb-5 flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
-          <svg
-            className="h-7 w-7 sm:h-8 sm:w-8 text-gray-600 dark:text-gray-300"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+    <Flex
+      align="center"
+      justify="center"
+      px="4"
+      style={{
+        minHeight: "100dvh",
+      }}
+    >
+      <Card
+        size="3"
+        variant="ghost"
+        style={{
+          width: "100%",
+          maxWidth: 420,
+        }}
+      >
+        <Flex
+          direction="column"
+          align="center"
+          gap="5"
+          p={{ initial: "2", sm: "4" }}
+        >
+          {/* Icon */}
+          <Flex
+            align="center"
+            justify="center"
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: "50%",
+              background: "var(--gray-4)",
+              color: "var(--gray-11)",
+            }}
           >
-            <path
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M9.172 16.172a4 4 0 015.656 0M12 12h.01M8.5 9.5h.01M15.5 9.5h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-        </div>
+            <Frown size={34} strokeWidth={2} />
+          </Flex>
 
-        {/* Title */}
-        <h1 className="text-xl sm:text-2xl font-semibold">
-          404 - Page Not Found
-        </h1>
+          {/* Heading */}
+          <Flex direction="column" align="center" gap="2">
+            <Heading size="6" weight="bold" align="center">
+              404 - Page Not Found
+            </Heading>
 
-        {/* Message */}
-        <p className="mt-3 text-sm sm:text-base text-gray-600 dark:text-gray-400 leading-relaxed">
-          The page you are looking for doesn’t exist or has been moved.
-        </p>
+            <Text
+              size="3"
+              color="gray"
+              align="center"
+              style={{
+                maxWidth: 350,
+                lineHeight: 1.6,
+              }}
+            >
+              The page you are looking for doesn&apos;t exist or has been
+              moved.
+            </Text>
+          </Flex>
 
-        {/* Buttons */}
-        <div className="mt-6 flex flex-col gap-3">
-          <button
-            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition active:scale-[0.98]"
-            onClick={() => router.replace(Routes.LandingPage)}
-          >
-            Go To Home
-          </button>
+          {/* Action */}
+          <Box style={{ width: "100%" }}>
+            <Button
+              size="2"
+              variant="solid"
+              style={{
+                width: "100%",
+                cursor: "pointer",
+              }}
+              onClick={() => router.replace(Routes.LandingPage)}
+            >
+              Go To Home
+            </Button>
+          </Box>
 
-        </div>
-
-        {/* Footer */}
-        <p className="mt-5 text-xs text-gray-400 dark:text-gray-500">
-          Please check the URL.
-        </p>
-
-      </div>
-    </div>
+          {/* Footer */}
+          <Text size="1" color="gray" align="center">
+            Please check the URL and try again.
+          </Text>
+        </Flex>
+      </Card>
+    </Flex>
   );
 };
 
