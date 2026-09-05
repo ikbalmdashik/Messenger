@@ -132,6 +132,8 @@ export class AuthService {
     }
   }
 
+  
+
   async change_password(token: string, newPassword: string) {
     // 1️ Find token in DB
     const resetToken = await this.auth_repo.findOne({
