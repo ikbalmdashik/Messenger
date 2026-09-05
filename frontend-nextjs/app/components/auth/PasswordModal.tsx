@@ -744,7 +744,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                 transition={{ duration: 0.2 }}
                                 className="w-full my-2"
                             >
-                                <Box className="bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-700 rounded-lg p-3 text-left">
+                                <Box className="bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-700 rounded p-3 text-left">
                                     <Flex align="center" gap="2">
                                         <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
                                         <Text size="2" weight="medium" className="text-emerald-900 dark:text-emerald-100">
@@ -766,7 +766,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                                 transition={{ duration: 0.2 }}
                                 className="w-full my-2"
                             >
-                                <Box className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg p-3 text-left">
+                                <Box className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded p-3 text-left">
                                     <Flex align="center" gap="2">
                                         <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
                                         <Text size="2" color="red">
