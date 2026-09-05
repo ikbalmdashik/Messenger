@@ -19,13 +19,12 @@ type Status = "loading" | "valid1" | "valid2" | "expired" | "notfound";
 
 const Validation = ({ params }: ValidationProps) => {
   const { token } = use(params);
-
   const [status, setStatus] = useState<Status>("loading");
   const router = useRouter();
-
   const hasCalled = useRef(false);
 
   useEffect(() => {
+    // Prevent duplicate calls in React Strict Mode
     if (hasCalled.current) return;
     hasCalled.current = true;
 
@@ -33,9 +32,9 @@ const Validation = ({ params }: ValidationProps) => {
       try {
         const res = await axios.get(API_ENDPOINTS.Validate, {
           params: { token },
-          withCredentials: true,
         });
 
+        console.log("API Response:", res.data); // Add this
         const action = res.data?.action;
 
         if (action === "RESET_PASSWORD_ALLOWED") {
@@ -43,20 +42,25 @@ const Validation = ({ params }: ValidationProps) => {
         } else if (action === "EMAIL_VERIFIED") {
           setStatus("valid2");
         } else {
+          console.log("Unknown action:", action); // Add this
           setStatus("expired");
         }
       } catch (error: any) {
-        const code = error?.response?.data?.statusCode;
+        console.log("Error:", error.response?.data); // Add this
+        const statusCode = error?.response?.data?.statusCode;
+        const action = error?.response?.data?.action;
 
-        if (code === 404) {
+        if (statusCode === 404) {
           setStatus("notfound");
         } else {
           setStatus("expired");
         }
       }
     };
-
-    validateToken();
+    
+    if (token) {
+      validateToken();
+    }
   }, [token]);
 
   useEffect(() => {
@@ -71,11 +75,13 @@ const Validation = ({ params }: ValidationProps) => {
 
   if (status === "loading") {
     return (
-      <div className="bg-white dark:bg-slate-950 flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen">
         <FullScreenSpinner size={"3"} />
       </div>
     );
   }
+
+  console.log(status);
 
   if (status === "valid2") {
     return <EmailVerifiedSuccess />;

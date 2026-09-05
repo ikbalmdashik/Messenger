@@ -44,9 +44,6 @@
     "rxjs": "^7.8.2",
     "typeorm": "^1.1.1"
   },
-  "overrides": {
-    "cookie": "^2.0.1"
-  },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
     "@nestjs/schematics": "^12.0.0",

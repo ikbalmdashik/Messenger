@@ -1,64 +1,110 @@
 "use client";
 
-import Routes from "@/app/routes/routes";
+import React from "react";
 import { useRouter } from "next/navigation";
+import {
+  Box,
+  Button,
+  Card,
+  Flex,
+  Heading,
+  Text,
+} from "@radix-ui/themes";
+import { Check } from "lucide-react";
+
+import Routes from "@/app/routes/routes";
 
 const EmailVerifiedSuccess: React.FC = () => {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-white text-gray-900 dark:bg-gray-950 dark:text-white transition-colors">
-
-      <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg p-6 sm:p-8 text-center">
-
-        {/* Icon */}
-        <div className="mx-auto mb-5 flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-          <svg
-            className="h-7 w-7 sm:h-8 sm:w-8 text-green-600 dark:text-green-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+    <Flex
+      align="center"
+      justify="center"
+      px="4"
+      style={{
+        minHeight: "100dvh",
+      }}
+    >
+      <Card
+        size="3"
+        variant="ghost"
+        style={{
+          width: "100%",
+          maxWidth: 420,
+        }}
+      >
+        <Flex
+          direction="column"
+          align="center"
+          gap="5"
+          p={{ initial: "2", sm: "4" }}
+        >
+          {/* Success Icon */}
+          <Flex
+            align="center"
+            justify="center"
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: "50%",
+              background: "var(--green-3)",
+              color: "var(--green-11)",
+            }}
           >
-            <path
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-        </div>
+            <Check size={34} strokeWidth={2.5} />
+          </Flex>
 
-        {/* Title */}
-        <h1 className="text-xl sm:text-2xl font-semibold">
-          Email Verified
-        </h1>
+          {/* Heading */}
+          <Flex direction="column" align="center" gap="2">
+            <Heading size="6" weight="bold" align="center">
+              Email Verified
+            </Heading>
 
-        {/* Message */}
-        <p className="mt-3 text-sm sm:text-base text-gray-600 dark:text-gray-400 leading-relaxed">
-          Your email has been successfully verified.
-          <br className="hidden sm:block" />
-          You can now continue using your account securely.
-        </p>
+            <Text
+              size="3"
+              color="gray"
+              align="center"
+              style={{
+                maxWidth: 340,
+                lineHeight: 1.6,
+              }}
+            >
+              Your email has been successfully verified.
+              <br />
+              You can now continue using your account securely.
+            </Text>
+          </Flex>
 
-        {/* Buttons */}
-        <div className="mt-6 flex flex-col gap-3">
-          <button
-            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition active:scale-[0.98]"
-            onClick={() => router.replace(Routes.Login)}
-          >
-            Go to Login
-          </button>
+          {/* Action */}
+          <Box style={{ width: "100%" }}>
+            <Button
+              size="2"
+              variant="solid"
+              color="green"
+              style={{
+                width: "100%",
+                cursor: "pointer",
+              }}
+              onClick={() => router.replace(Routes.Login)}
+            >
+              Go to Login
+            </Button>
+          </Box>
 
-        </div>
+          {/* Footer */}
+          <Flex direction="column" align="center" gap="1">
+            <Text size="1" color="gray" align="center">
+              Thank you for verifying your email
+            </Text>
 
-        {/* Footer */}
-        <p className="mt-5 text-xs text-gray-400 dark:text-gray-500">
-          Thank you for verifying your email <br />
-          Messenger
-        </p>
-
-      </div>
-    </div>
+            <Text size="1" color="gray" weight="medium">
+              Messenger
+            </Text>
+          </Flex>
+        </Flex>
+      </Card>
+    </Flex>
   );
 };
 
