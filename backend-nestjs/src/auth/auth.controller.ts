@@ -4,10 +4,11 @@ import { CreateAuthDto, CreateUserDto, LoginDto, UpdateUserDto } from './dto/cre
 import { MailService } from 'src/mailer/mail.service';
 import { Request, Response } from 'express';
 import { ResetPasswordDto } from './dto/update-auth.dto';
+import { JwtService } from '@nestjs/jwt';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService, private readonly mailService: MailService) { }
+  constructor(private readonly authService: AuthService, private readonly mailService: MailService, private readonly jwtService: JwtService) { }
 
   @Post("/createUser")
   async CreateUser(@Body() createUserDto: CreateUserDto) {
@@ -45,11 +46,11 @@ export class AuthController {
     // 2. Set an HTTP-only cookie unique to this user ID/session
     const cookieName = `auth_token_${result.userId}`;
 
-    response.cookie(cookieName, token, {
+    response.cookie("access_token", result.access_token, {
       httpOnly: true,                                  // Prevents client-side JS access (XSS protection)
       secure: false,                                   // Transmit only over HTTPS in production
       sameSite: 'lax',                                 // Protects against CSRF attacks
-      maxAge: 7 * 24 * 60 * 60 * 1000,                 // Expiration time (e.g., 7 days in milliseconds)
+      maxAge: 1 * 24 * 60 * 60 * 1000,                 // Expiration time (e.g., 1 days in milliseconds)
       path: '/',                                       // Cookie available across the whole site
     });
 
@@ -92,7 +93,13 @@ export class AuthController {
   }
 
   @Post('/getUserByToken')
-  async getUserByToken(@Body('token') token: string | null) {
+  async getUserByToken(@Req() req: Request) {
+    const token = req.cookies?.access_token;
+
+    if (!token) {
+      throw new UnauthorizedException('Authentication cookie not found');
+    }
+
     return await this.authService.getUserByToken(token);
   }
 

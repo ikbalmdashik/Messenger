@@ -250,7 +250,7 @@ const MultiStepLogin = () => {
                 );
 
                 const getUserData = await axios.post(API_ENDPOINTS.GetUserByToken, {
-                    token: await response.data.access_token
+                    // token: await response.data.access_token
                 }, { withCredentials: true })
 
                 if (await getUserData.data?.isEmailVerified === false) {

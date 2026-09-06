@@ -281,12 +281,9 @@ export class AuthService {
 
   async getUserByToken(token: string): Promise<UsersEntity> {
     // 1. Find session matching the token and ensure it is not expired
-    console.log("TOKEN RECEIVED:", token);
     if (!token) {
       throw new UnauthorizedException("Token not found!")
     }
-
-
     const session = await this.userSessionRepository.findOne({
       where: {
         tokenIdentifier: token,
