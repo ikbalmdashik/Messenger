@@ -31,17 +31,15 @@ const Validation = ({ params }: ValidationProps) => {
 
     const validateToken = async () => {
       try {
-        const res = await axios.get(API_ENDPOINTS.Validate, {
-          params: { token },
+        const res = await axios.post(API_ENDPOINTS.ValidateLink, {
+          token: token,
         });
 
         const action = res.data?.action;
 
-        console.log(action)
-
         if (action === "RESET_PASSWORD") {
           setStatus("valid1");
-        } else if (action === "EMAIL_VERIFIED") {
+        } else if (action === "VERIFY_EMAIL") {
           setStatus("valid2");
         } else {
           setStatus("expired");

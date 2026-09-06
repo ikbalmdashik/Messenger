@@ -5,21 +5,22 @@ const API_ENDPOINTS = {
     DefaultURL: defaultURL,
 
     // Auth related endpoints
-    CreateUser: defaultURL + "/auth/createUser",
     IsEmailExist: defaultURL + "/auth/isEmailExist",
     ValidateUser: defaultURL + "/auth/validateUser",
     Login: defaultURL + "/auth/login",
-    GetUserByToken: defaultURL + "/auth/getUserByToken",
-    SendLink: defaultURL + "/auth/sendLink",
+    SendPasswordResetLink: defaultURL + "/auth/sendPasswordResetLink",
+    SendEmailVerificationLink: defaultURL + "/auth/sendEmailVerifyLink",
+    ValidateLink: defaultURL + "/auth/validateLink",
     SendOtp: defaultURL + "/auth/sendOtp",
-    Validate: defaultURL + "/auth/validate",
-    UpdatePassword: defaultURL + "/auth/resetPassword",
     VerifyOtp: defaultURL + "/auth/",
+    UpdatePassword: defaultURL + "/auth/resetPassword",
     ResetPassword: defaultURL + "/",
     
     // User related endpoints
+    CreateUser: defaultURL + "/auth/createUser",
     GetAllUsers: defaultURL + "/auth/getAllUsers",
     GetUserById: defaultURL + "/auth/getUser/",
+    GetUserByToken: defaultURL + "/auth/getUserByToken",
     UpdateUser: defaultURL + "/auth/updateUser",
     DeleteUser: defaultURL + "/auth/deleteUser",
 

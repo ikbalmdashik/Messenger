@@ -188,7 +188,7 @@ const MultiStepLogin = () => {
 
     const sendVerificationLink = useCallback(
         async (emailInput: string, type: string) => {
-            return await axios.post(API_ENDPOINTS.SendLink, {
+            return await axios.post(API_ENDPOINTS.SendEmailVerificationLink , {
                 email: emailInput,
                 type: type,
             });

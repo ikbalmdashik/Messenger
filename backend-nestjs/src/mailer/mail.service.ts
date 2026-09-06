@@ -9,6 +9,12 @@ import { Repository } from 'typeorm';
 import { customAlphabet } from 'nanoid';
 import * as bcrypt from 'bcrypt';
 
+export enum AuthLinkAction {
+  VERIFY_EMAIL = 'VERIFY_EMAIL',
+  VERIFY_OTP = 'VERIFY_OTP',
+  RESET_PASSWORD = 'RESET_PASSWORD',
+}
+
 @Injectable()
 export class MailService {
     private readonly transporter: Transporter;
@@ -37,7 +43,7 @@ export class MailService {
         });
     }
 
-    async generate_string(length: number) {
+    private async generate_string(length: number) {
         const generateToken = customAlphabet(
             '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
             length,
@@ -46,15 +52,18 @@ export class MailService {
         return generateToken()
     }
 
+    private async hash_string(string: string) {
+        const salt = await bcrypt.genSalt(10);
+        return await bcrypt.hash(string, salt);
+    }
+
 
     // Send Email
     async Send_Link(
         to: string,
-        action: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_OTP',
+        action: AuthLinkAction,
     ) {
-        const tokenLength = action === 'VERIFY_OTP' ? 8 : 64;
-
-        const token = await this.generate_string(tokenLength);
+        const token = await this.generate_string(128);
 
         const link = `${this.configService.get(
             'FRONTEND_URL',
@@ -65,16 +74,13 @@ export class MailService {
             to,
 
             subject:
-                action === 'RESET_PASSWORD'
+                action === AuthLinkAction.RESET_PASSWORD
                     ? 'Reset Your Password'
-                    : action === 'VERIFY_OTP'
-                        ? 'Login Verification'
-                        : 'Verify Your Email',
+                    : 'Verify Your Email',
 
             html: await Email_Template({
                 action,
                 link,
-                otp: action === 'VERIFY_OTP' ? token : undefined,
             }),
         };
 
@@ -88,7 +94,7 @@ export class MailService {
             }
 
             if (
-                action === 'VERIFY_EMAIL' &&
+                action === AuthLinkAction.VERIFY_EMAIL &&
                 user.isEmailVerified === true
             ) {
                 return {
@@ -112,11 +118,9 @@ export class MailService {
             return {
                 success: true,
                 message:
-                    action === 'VERIFY_EMAIL'
+                    action === AuthLinkAction.VERIFY_EMAIL
                         ? 'Verification email sent'
-                        : action === 'RESET_PASSWORD'
-                            ? 'Password reset email sent'
-                            : 'Login verification code sent',
+                        : 'Password reset email sent'
             };
         } catch (error) {
             throw new Error(
@@ -125,13 +129,8 @@ export class MailService {
         }
     }
 
-      private async hash_string(string: string) {
-        const salt = await bcrypt.genSalt(10);
-        return await bcrypt.hash(string, salt);
-      }
-
-    async send_otp(to: string) {
-        const otp = await this.generate_string(8);
+    async send_otp(to: string, action: AuthLinkAction) {
+        const otp = await this.generate_string(16);
 
         const mailOptions = {
             from: this.configService.get('EMAIL_USER'),
@@ -139,7 +138,7 @@ export class MailService {
 
             subject: "Please Verify Your Identity",
 
-            html: await Email_Template({ action: "VERIFY_OTP", otp: otp })
+            html: await Email_Template({ action: AuthLinkAction.VERIFY_OTP, otp: otp })
         };
 
         try {
@@ -154,8 +153,8 @@ export class MailService {
             const new_otp_entity = await this.otp_einity.save({
                 userId: user.userId,
                 user: user,
-                otpHash: await this.hash_string(otp) ,
-                usedFor: "unused!",
+                otpHash: await this.hash_string(otp),
+                usedFor: action,
                 expiresAt: new Date(Date.now() + 1000 * 60 * 15),
                 createdAt: new Date()
             });
@@ -165,7 +164,7 @@ export class MailService {
             return new_otp_entity;
 
         } catch (error) {
-            
+
         }
 
     }

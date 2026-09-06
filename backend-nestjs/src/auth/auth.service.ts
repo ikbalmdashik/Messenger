@@ -7,6 +7,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from "bcrypt";
 import { ChatMessageEntity } from 'src/chat/entities/chat.entity';
 import { customAlphabet } from 'nanoid';
+import { AuthLinkAction } from '@/mailer/mail.service';
+
+  export interface ValidateLinkOptions {
+  token: string;
+  newPassword?: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -206,6 +212,84 @@ export class AuthService {
       success: false,
       message: 'Authentication failed',
     };
+  }
+
+  async validateLink(options: ValidateLinkOptions) {
+    const { token, newPassword } = options;
+
+    // 1. Fetch token record
+    const record = await this.auth_repo.findOne({
+      where: { token },
+    });
+
+    if (!record) {
+      throw new NotFoundException('Token not found or invalid');
+    }
+
+    if (record.used) {
+      throw new BadRequestException('Link has already been used');
+    }
+
+    // 2. Check expiration
+    if (record.expiresAt < new Date()) {
+      throw new BadRequestException('Link has expired. Please request a new one.');
+    }
+
+    // 3. Fetch user
+    const user = await this.userRepository.findOne({
+      where: { userId: record.userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User associated with this token no longer exists');
+    }
+
+    // 4. Branch based on token's action
+    switch (record.usedFor) {
+      case AuthLinkAction.VERIFY_EMAIL: {
+        if (user.isEmailVerified) {
+          record.used = true;
+          await this.auth_repo.save(record);
+          return { success: true, action: AuthLinkAction.VERIFY_EMAIL, message: 'Email is already verified.' };
+        }
+
+        user.isEmailVerified = true;
+        record.used = true;
+
+        await this.userRepository.save(user);
+        await this.auth_repo.save(record);
+
+        return {
+          success: true,
+          action: AuthLinkAction.VERIFY_EMAIL,
+          message: 'Email verified successfully! You can now log in.',
+        };
+      }
+
+      case AuthLinkAction.RESET_PASSWORD: {
+        // Require newPassword for password reset execution
+        if (!newPassword) {
+          throw new BadRequestException(
+            'newPassword is required to complete password reset',
+          );
+        }
+
+        user.password = await this.HashPassword(newPassword);
+        record.used = true;
+
+        await this.userRepository.save(user);
+        await this.auth_repo.save(record);
+
+        return {
+          success: true,
+          action: AuthLinkAction.RESET_PASSWORD,
+          message: 'Password reset successfully. You can now log in.',
+        };
+      }
+
+      default:
+        throw new BadRequestException('Unsupported link action type');
+    }
   }
 
   async validateTokenAndLogin(token: string) {

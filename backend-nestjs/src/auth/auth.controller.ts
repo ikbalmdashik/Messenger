@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, Query, Res, Req, UnauthorizedException } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { AuthService, ValidateLinkOptions } from './auth.service';
 import { CreateAuthDto, CreateUserDto, LoginDto, UpdateUserDto } from './dto/create-auth.dto';
-import { MailService } from 'src/mailer/mail.service';
+import { AuthLinkAction, MailService } from 'src/mailer/mail.service';
 import { Request, Response } from 'express';
 import { ResetPasswordDto } from './dto/update-auth.dto';
 import { JwtService } from '@nestjs/jwt';
@@ -61,27 +61,29 @@ export class AuthController {
   }
 
 
-  @Post('/sendLink')
-  async sendLink(
-    @Body('email') email: string,
-    @Body('type') type: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_OTP',
-  ) {
-    return await this.mailService.Send_Link(email, type);
+  @Post('/sendEmailVerifyLink')
+  async sendEmailVerifyLink(@Body('email') email: string) {
+    return await this.mailService.Send_Link(email, AuthLinkAction.VERIFY_EMAIL);
+  }
+
+  @Post('/sendPasswordResetLink')
+  async sendPasswordResetLink(@Body('email') email: string) {
+    return await this.mailService.Send_Link(email, AuthLinkAction.RESET_PASSWORD);
   }
 
   @Post('/sendOtp')
-  async sendOtp (@Body('email') email: string) {
-    return await this.mailService.send_otp(email)
+  async sendOtp(@Body('email') email: string) {
+    return await this.mailService.send_otp(email, AuthLinkAction.VERIFY_OTP);
   }
 
-  // @Get('/validate')
-  // async validateToken(@Query('token') token: string) {
-  //   if (!token) {
-  //     throw new BadRequestException('Token is required');
-  //   }
-  //   const result = await this.authService.validateTokenAndLogin(token);
-  //   return result;
-  // }
+  @Post('/validateLink')
+  async validateLink(@Body() option: ValidateLinkOptions) {
+    if (!option.token) {
+      throw new BadRequestException('Token is required');
+    }
+    const result = await this.authService.validateLink(option);
+    return result;
+  }
 
   @Post('/resetPassword')
   async resetPassword(@Body() dto: ResetPasswordDto) {
