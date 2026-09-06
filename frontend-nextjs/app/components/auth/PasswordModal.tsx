@@ -305,7 +305,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
         try {
             const response = await axios.post(
                 API_ENDPOINTS.ValidateUser,
-                { email: sentContactValue, otp, usedFor: purpose },
+                { email: sentContactValue, otp: otp, usedFor: purpose },
                 { withCredentials: true }
             );
 

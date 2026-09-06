@@ -70,7 +70,15 @@ export class AuthService {
   async validateUser(loginDto: LoginDto) {
     const { email, password, otp } = loginDto;
 
-    // Find user
+    // 1. Neither password nor OTP provided
+    if (!password && !otp) {
+      return {
+        success: false,
+        message: 'Password or OTP is required',
+      };
+    }
+
+    // 2. Find user
     const user = await this.userRepository.findOne({
       where: { email },
     });
@@ -82,15 +90,14 @@ export class AuthService {
       };
     }
 
-    // =====================================================
-    // LOGIN USING OTP
-    // =====================================================
+    // 3. Validate credentials (OTP or Password)
+    let isAuthenticated = false;
+
     if (otp) {
       const otpRecord = await this.auth_repo.findOne({
         where: {
           userId: user.userId,
           token: otp,
-          usedFor: 'VERIFY_LOGIN',
           used: false,
         },
       });
@@ -102,7 +109,6 @@ export class AuthService {
         };
       }
 
-      // Check OTP expiration
       if (new Date() > new Date(otpRecord.expiresAt)) {
         return {
           success: false,
@@ -110,15 +116,12 @@ export class AuthService {
         };
       }
 
-      // Mark OTP as used
+      // Mark the OTP as used
       otpRecord.used = true;
       await this.auth_repo.save(otpRecord);
-    }
+      isAuthenticated = true;
 
-    // =====================================================
-    // LOGIN USING PASSWORD
-    // =====================================================
-    if (password) {
+    } else if (password) {
       const isPasswordValid = await bcrypt.compare(
         password,
         user.password,
@@ -130,7 +133,13 @@ export class AuthService {
           message: 'Wrong password',
         };
       }
+      
+      isAuthenticated = true;
+    }
 
+    // 4. Common Post-Authentication Workflow (Runs for both OTP and Password)
+    if (isAuthenticated) {
+      // Invalidate all existing unused active tokens/sessions for this user
       await this.auth_repo.update(
         {
           userId: user.userId,
@@ -138,37 +147,36 @@ export class AuthService {
         },
         {
           used: true,
-          usedFor: "Invalidated by new token request", // Optional: record reason
-        }
+          usedFor: 'Invalidated by new token request',
+        },
       );
 
+      // Generate new active token
       const generateToken = customAlphabet(
         '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
         64,
       );
-
       const token = generateToken();
 
       const newAuth = await this.auth_repo.save({
         userId: user.userId,
         token: token,
-        usedFor: "Unused!",
+        usedFor: 'Unused!',
         createdAt: new Date(),
-        expiresAt: new Date(
-          Date.now() + 1000 * 60 * 15,
-        ),
+        expiresAt: new Date(Date.now() + 1000 * 60 * 15), // 15 minutes
         used: false,
       });
 
-      return { success: true, token: newAuth.token };
+      return {
+        success: true,
+        token: newAuth.token,
+        user,
+      };
     }
 
-    // =====================================================
-    // NEITHER PASSWORD NOR OTP PROVIDED
-    // =====================================================
     return {
       success: false,
-      message: 'Password or OTP is required',
+      message: 'Authentication failed',
     };
   }
 
