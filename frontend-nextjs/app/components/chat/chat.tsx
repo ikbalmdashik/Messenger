@@ -1,16 +1,30 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import axios from "axios";
+
 import ChatSidebar from "./sidebar/sidebar";
 import Middlebar from "./middlebar/middlebar";
-import { Dialog } from "@radix-ui/themes";
 import Rightbar from "../rightbar/rightbar";
+import API_ENDPOINTS from "@/app/routes/api";
+import FullScreenSpinner from "../spinner";
+// import Unauthorized from "../unauthorized/unauthorized";
 
 const ChatComponent = () => {
+  // =====================================================
+  // AUTHENTICATION STATE
+  // =====================================================
+
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // =====================================================
+  // CHAT STATE
+  // =====================================================
+
   const [receiverId, setReceiverId] = useState<number | null>(null);
   const [showChatMobile, setShowChatMobile] = useState(false);
 
-  // Mobile profile drawer
   const [showMobileProfile, setShowMobileProfile] = useState(false);
 
   const [dragging, setDragging] = useState<"left" | "right" | null>(null);
@@ -19,14 +33,59 @@ const ChatComponent = () => {
   const [middleWidth, setMiddleWidth] = useState(50);
   const [rightWidth, setRightWidth] = useState(25);
 
-  // --- resizable layout ---
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
 
   const [leftWidth, setLeftWidth] = useState(33);
 
-  const startDrag = () => (isDragging.current = true);
-  const stopDrag = () => (isDragging.current = false);
+  // =====================================================
+  // CHECK AUTHENTICATION
+  // =====================================================
+
+  useEffect(() => {
+    const getUserData = async () => {
+      try {
+        setIsCheckingAuth(true);
+
+        const response = await axios.post(
+          API_ENDPOINTS.GetUserByToken,
+          {},
+          {
+            withCredentials: true,
+          }
+        );
+
+        console.log("Authenticated user:", response.data);
+
+        // API returned successfully
+        if (response.data) {
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        console.error("Authentication failed:", error);
+
+        setIsAuthenticated(false);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    getUserData();
+  }, []);
+
+  // =====================================================
+  // RESIZABLE LAYOUT
+  // =====================================================
+
+  const startDrag = () => {
+    isDragging.current = true;
+  };
+
+  const stopDrag = () => {
+    isDragging.current = false;
+  };
 
   const onDrag = (e: MouseEvent) => {
     if (!isDragging.current || !containerRef.current) return;
@@ -75,13 +134,20 @@ const ChatComponent = () => {
     };
   }, [dragging, sidebarWidth, rightWidth]);
 
+  // =====================================================
+  // SELECT CHAT
+  // =====================================================
+
   const handleSelect = (_: number | null, rid: number | null) => {
     setReceiverId(rid);
     setShowChatMobile(true);
 
-    // Close profile when changing conversation
     setShowMobileProfile(false);
   };
+
+  // =====================================================
+  // OPEN MOBILE PROFILE
+  // =====================================================
 
   const handleOpenMobileProfile = () => {
     if (receiverId !== null) {
@@ -89,17 +155,59 @@ const ChatComponent = () => {
     }
   };
 
+  // =====================================================
+  // SENDER ID
+  // =====================================================
+
   const senderId =
     typeof window !== "undefined"
       ? Number(sessionStorage.getItem("loginId"))
       : null;
 
+  // =====================================================
+  // AUTH CHECK LOADING
+  // =====================================================
+
+  if (isCheckingAuth) {
+    return (
+      <FullScreenSpinner />
+    );
+  }
+
+  // =====================================================
+  // NOT AUTHENTICATED
+  // =====================================================
+
+  if (!isAuthenticated) {
+    return (
+      <div className="h-[100dvh] flex items-center justify-center bg-white dark:bg-gray-950">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+            Authentication required
+          </h2>
+
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Please log in to access the chat.
+          </p>
+        </div>
+      </div>
+    );
+
+    // Or:
+    // return <Unauthorized />;
+  }
+
+  // =====================================================
+  // AUTHENTICATED → SHOW CHAT
+  // =====================================================
+
   return (
     <div className="h-[100dvh] overflow-hidden transition-colors">
       {/* =====================================================
           MOBILE VIEW
-          ===================================================== */}
+      ===================================================== */}
       <div className="md:hidden h-full">
+
         {!showChatMobile && (
           <ChatSidebar onSelect={handleSelect} />
         )}
@@ -152,12 +260,11 @@ const ChatComponent = () => {
           )}
 
         </div>
-
       </div>
 
       {/* =====================================================
           DESKTOP VIEW
-          ===================================================== */}
+      ===================================================== */}
       <div className="hidden md:flex h-[100dvh] w-full overflow-hidden">
 
         {/* Sidebar */}
@@ -213,6 +320,7 @@ const ChatComponent = () => {
             onBack={() => setShowMobileProfile(false)}
           />
         </div>
+
       </div>
     </div>
   );
