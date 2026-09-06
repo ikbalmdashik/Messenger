@@ -8,6 +8,9 @@ import Middlebar from "./middlebar/middlebar";
 import Rightbar from "../rightbar/rightbar";
 import API_ENDPOINTS from "@/app/routes/api";
 import FullScreenSpinner from "../spinner";
+import { Button } from "@radix-ui/themes";
+import { useRouter } from "next/navigation";
+import Routes from "@/app/routes/routes";
 // import Unauthorized from "../unauthorized/unauthorized";
 
 const ChatComponent = () => {
@@ -38,6 +41,8 @@ const ChatComponent = () => {
 
   const [leftWidth, setLeftWidth] = useState(33);
 
+  const router = useRouter()
+
   // =====================================================
   // CHECK AUTHENTICATION
   // =====================================================
@@ -55,8 +60,6 @@ const ChatComponent = () => {
           }
         );
 
-        console.log("Authenticated user:", response.data);
-
         // API returned successfully
         if (response.data) {
           setIsAuthenticated(true);
@@ -64,7 +67,7 @@ const ChatComponent = () => {
           setIsAuthenticated(false);
         }
       } catch (error) {
-        console.error("Authentication failed:", error);
+        console.log("Authentication failed:", error);
 
         setIsAuthenticated(false);
       } finally {
@@ -180,7 +183,7 @@ const ChatComponent = () => {
 
   if (!isAuthenticated) {
     return (
-      <div className="h-[100dvh] flex items-center justify-center bg-white dark:bg-gray-950">
+      <div className="h-[100dvh] flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
             Authentication required
@@ -189,6 +192,12 @@ const ChatComponent = () => {
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
             Please log in to access the chat.
           </p>
+          <Button
+            mt={"2"}
+            style={{ width: "100%" }}
+            className="text-xl"
+            onClick={() => { router.push(Routes.Login) }}
+          >Log In</Button>
         </div>
       </div>
     );

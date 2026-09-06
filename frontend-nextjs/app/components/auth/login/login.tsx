@@ -258,6 +258,8 @@ const MultiStepLogin = () => {
                     return;
                 }
 
+                sessionStorage.setItem("loginId", `${getUserData.data.user}`)
+
                 router.push(Routes.Chat);
             } catch {
                 router.push(Routes.Chat);

@@ -37,9 +37,9 @@ export class MailService {
     // Send Email
     async Send_Link(
         to: string,
-        type: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_LOGIN',
+        usedFor: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_LOGIN',
     ) {
-        const tokenLength = type === 'VERIFY_LOGIN' ? 8 : 64;
+        const tokenLength = usedFor === 'VERIFY_LOGIN' ? 8 : 64;
 
         const generateToken = customAlphabet(
             '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
@@ -57,16 +57,16 @@ export class MailService {
             to,
 
             subject:
-                type === 'RESET_PASSWORD'
+                usedFor === 'RESET_PASSWORD'
                     ? 'Reset Your Password'
-                    : type === 'VERIFY_LOGIN'
+                    : usedFor === 'VERIFY_LOGIN'
                         ? 'Login Verification'
                         : 'Verify Your Email',
 
             html: await Email_Template(
-                type,
+                usedFor,
                 link,
-                type === 'VERIFY_LOGIN' ? token : undefined,
+                usedFor === 'VERIFY_LOGIN' ? token : undefined,
             ),
         };
 
@@ -80,7 +80,7 @@ export class MailService {
             }
 
             if (
-                type === 'VERIFY_EMAIL' &&
+                usedFor === 'VERIFY_EMAIL' &&
                 user.isEmailVerified === true
             ) {
                 return {
@@ -91,7 +91,7 @@ export class MailService {
             await this.auth_repo.save({
                 userId: user.userId,
                 token: token,
-                type: type,
+                usedFor: usedFor,
                 createdAt: new Date(),
                 expiresAt: new Date(
                     Date.now() + 1000 * 60 * 15,
@@ -104,9 +104,9 @@ export class MailService {
             return {
                 success: true,
                 message:
-                    type === 'VERIFY_EMAIL'
+                    usedFor === 'VERIFY_EMAIL'
                         ? 'Verification email sent'
-                        : type === 'RESET_PASSWORD'
+                        : usedFor === 'RESET_PASSWORD'
                             ? 'Password reset email sent'
                             : 'Login verification code sent',
             };
