@@ -3,10 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { Transporter } from 'nodemailer'
 import * as nodemailer from 'nodemailer'
 import { Email_Template } from './email.template';
-import { AuthTokenEntity, UsersEntity } from 'src/auth/entities/auth.entity';
+import { AuthOtpEntity, AuthTokenEntity, UsersEntity } from 'src/auth/entities/auth.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { customAlphabet } from 'nanoid';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class MailService {
@@ -19,6 +20,9 @@ export class MailService {
 
         @InjectRepository(UsersEntity)
         private user_repo: Repository<UsersEntity>,
+
+        @InjectRepository(AuthOtpEntity)
+        private otp_einity: Repository<AuthOtpEntity>
 
     ) {
         // Initialize transporter
@@ -33,20 +37,24 @@ export class MailService {
         });
     }
 
+    async generate_string(length: number) {
+        const generateToken = customAlphabet(
+            '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+            length,
+        );
+
+        return generateToken()
+    }
+
 
     // Send Email
     async Send_Link(
         to: string,
-        usedFor: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_LOGIN',
+        action: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_OTP',
     ) {
-        const tokenLength = usedFor === 'VERIFY_LOGIN' ? 8 : 64;
+        const tokenLength = action === 'VERIFY_OTP' ? 8 : 64;
 
-        const generateToken = customAlphabet(
-            '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
-            tokenLength,
-        );
-
-        const token = generateToken();
+        const token = await this.generate_string(tokenLength);
 
         const link = `${this.configService.get(
             'FRONTEND_URL',
@@ -57,17 +65,17 @@ export class MailService {
             to,
 
             subject:
-                usedFor === 'RESET_PASSWORD'
+                action === 'RESET_PASSWORD'
                     ? 'Reset Your Password'
-                    : usedFor === 'VERIFY_LOGIN'
+                    : action === 'VERIFY_OTP'
                         ? 'Login Verification'
                         : 'Verify Your Email',
 
-            html: await Email_Template(
-                usedFor,
+            html: await Email_Template({
+                action,
                 link,
-                usedFor === 'VERIFY_LOGIN' ? token : undefined,
-            ),
+                otp: action === 'VERIFY_OTP' ? token : undefined,
+            }),
         };
 
         try {
@@ -80,7 +88,7 @@ export class MailService {
             }
 
             if (
-                usedFor === 'VERIFY_EMAIL' &&
+                action === 'VERIFY_EMAIL' &&
                 user.isEmailVerified === true
             ) {
                 return {
@@ -91,7 +99,7 @@ export class MailService {
             await this.auth_repo.save({
                 userId: user.userId,
                 token: token,
-                usedFor: usedFor,
+                usedFor: action,
                 createdAt: new Date(),
                 expiresAt: new Date(
                     Date.now() + 1000 * 60 * 15,
@@ -104,9 +112,9 @@ export class MailService {
             return {
                 success: true,
                 message:
-                    usedFor === 'VERIFY_EMAIL'
+                    action === 'VERIFY_EMAIL'
                         ? 'Verification email sent'
-                        : usedFor === 'RESET_PASSWORD'
+                        : action === 'RESET_PASSWORD'
                             ? 'Password reset email sent'
                             : 'Login verification code sent',
             };
@@ -115,5 +123,50 @@ export class MailService {
                 `Error sending email: ${error instanceof Error ? error.message : error}`,
             );
         }
+    }
+
+      private async hash_string(string: string) {
+        const salt = await bcrypt.genSalt(10);
+        return await bcrypt.hash(string, salt);
+      }
+
+    async send_otp(to: string) {
+        const otp = await this.generate_string(8);
+
+        const mailOptions = {
+            from: this.configService.get('EMAIL_USER'),
+            to,
+
+            subject: "Please Verify Your Identity",
+
+            html: await Email_Template({ action: "VERIFY_OTP", otp: otp })
+        };
+
+        try {
+            const user = await this.user_repo.findOneBy({
+                email: to,
+            });
+
+            if (!user) {
+                throw new Error('User not found');
+            }
+
+            const new_otp_entity = await this.otp_einity.save({
+                userId: user.userId,
+                user: user,
+                otpHash: await this.hash_string(otp) ,
+                usedFor: "unused!",
+                expiresAt: new Date(Date.now() + 1000 * 60 * 15),
+                createdAt: new Date()
+            });
+
+            await this.transporter.sendMail(mailOptions);
+
+            return new_otp_entity;
+
+        } catch (error) {
+            
+        }
+
     }
 }

@@ -1,119 +1,59 @@
-// export const Email_Template = async (
-//   action: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_LOGIN',
-//   link: string,
-// ) => {
-//   const isVerify = action === 'VERIFY_EMAIL' || 'VERIFY_LOGIN';
+export type EmailAction = 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_OTP';
 
-//   const title = isVerify ? 'Verify Your Email' : 'Reset Your Password';
-//   const heading = isVerify ? 'Email Verification' : 'Password Reset Request';
-//   const description = isVerify
-//     ? 'Please verify your email address by clicking the button below.'
-//     : 'You requested to reset your password. Click the button below to continue.';
-//   const buttonText = isVerify ? 'Verify Email' : 'Reset Password';
+interface EmailTemplateParams {
+  action: EmailAction;
+  link?: string;
+  otp?: string;
+  userName?: string;
+}
 
-//   return `
-//   <html>
-//     <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
-//       <div style="max-width: 600px; margin: auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+export const Email_Template = async ({
+  action,
+  link,
+  otp,
+  userName = 'there',
+}: EmailTemplateParams) => {
+  const isOtp = action === 'VERIFY_OTP';
 
-//         <!-- Header -->
-//         <div style="background-color: ${isVerify ? '#4CAF50' : '#FF6B6B'}; padding: 20px; text-align: center; color: #ffffff;">
-//           <h2 style="margin: 0;">${heading}</h2>
-//         </div>
+  // Action-specific configurations
+  const actionConfig: Record<
+    EmailAction,
+    { heading: string; description: string; buttonText?: string; primaryColor: string }
+  > = {
+    VERIFY_EMAIL: {
+      heading: 'Verify Your Email',
+      description: 'Thank you for registering! Please click the button below to verify your email address.',
+      buttonText: 'Verify Email Address',
+      primaryColor: '#10B981', // Emerald Green
+    },
+    RESET_PASSWORD: {
+      heading: 'Reset Your Password',
+      description: 'We received a request to reset your password. Click the button below to choose a new one.',
+      buttonText: 'Reset Password',
+      primaryColor: '#EF4444', // Red
+    },
+    VERIFY_OTP: {
+      heading: 'Your OTP Code',
+      description: 'Use the One-Time Password (OTP) below to complete your verification request.',
+      primaryColor: '#3B82F6', // Blue
+    },
+  };
 
-//         <!-- Body -->
-//         <div style="padding: 25px; color: #333;">
-//           <p>Hello,</p>
-//           <p>${description}</p>
-
-//           <!-- Button -->
-//           <div style="text-align: center; margin: 30px 0;">
-//             <a href="${link}"
-//                style="
-//                  display: inline-block;
-//                  padding: 14px 28px;
-//                  background-color: ${isVerify ? '#4CAF50' : '#FF6B6B'};
-//                  color: #ffffff;
-//                  text-decoration: none;
-//                  font-size: 16px;
-//                  font-weight: bold;
-//                  border-radius: 6px;
-//                ">
-//               ${buttonText}
-//             </a>
-//           </div>
-
-//           <p style="font-size: 14px; color: #777;">
-//             This link will expire in <strong>15 minutes</strong>.
-//           </p>
-
-//           <p style="font-size: 14px; color: #777;">
-//             If you did not request this, please ignore this email.
-//           </p>
-//         </div>
-
-//         <!-- Footer -->
-//         <div style="background-color: #f1f1f1; padding: 12px; text-align: center; font-size: 13px; color: #888;">
-//           <p>© ${new Date().getFullYear()} Messenger. All rights reserved.</p>
-//         </div>
-
-//       </div>
-//     </body>
-//   </html>
-//   `;
-// };
-
-
-
-
-
-
-
-
-
-export const Email_Template = async (
-  action: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_LOGIN',
-  link?: string,
-  otp?: string,
-) => {
-  const isVerify =
-    action === 'VERIFY_EMAIL' || action === 'VERIFY_LOGIN';
-
-  const isOtp = action === 'VERIFY_LOGIN';
-
-  const title = isOtp
-    ? 'Your Verification Code'
-    : isVerify
-      ? 'Verify Your Email'
-      : 'Reset Your Password';
-
-  const heading = isOtp
-    ? 'Verification Code'
-    : isVerify
-      ? 'Email Verification'
-      : 'Password Reset Request';
-
-  const description = isOtp
-    ? 'Use the verification code below to continue. This code will expire in 15 minutes.'
-    : isVerify
-      ? 'Please verify your email address by clicking the button below.'
-      : 'You requested to reset your password. Click the button below to continue.';
-
-  const buttonText = isVerify
-    ? 'Verify Email'
-    : 'Reset Password';
-
-  const primaryColor = isOtp || isVerify
-    ? '#4CAF50'
-    : '#FF6B6B';
+  const { heading, description, buttonText, primaryColor } = actionConfig[action];
 
   return `
+  <!DOCTYPE html>
   <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
     <body style="
       font-family: Arial, sans-serif;
-      background-color: #f4f4f4;
+      background-color: #f4f6f8;
       padding: 20px;
       margin: 0;
+      color: #333333;
     ">
       <div style="
         max-width: 600px;
@@ -121,66 +61,67 @@ export const Email_Template = async (
         background-color: #ffffff;
         border-radius: 8px;
         overflow: hidden;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
       ">
 
         <!-- Header -->
         <div style="
           background-color: ${primaryColor};
-          padding: 20px;
+          padding: 24px 20px;
           text-align: center;
           color: #ffffff;
         ">
-          <h2 style="margin: 0;">
+          <h2 style="margin: 0; font-size: 22px; font-weight: bold;">
             ${heading}
           </h2>
         </div>
 
         <!-- Body -->
         <div style="
-          padding: 25px;
-          color: #333;
+          padding: 30px 25px;
+          line-height: 1.6;
         ">
 
-          <p>Hello,</p>
+          <p style="font-size: 16px; margin-top: 0;">Hello ${userName},</p>
 
-          <p>
+          <p style="font-size: 15px; color: #4b5563;">
             ${description}
           </p>
 
           ${
             isOtp
               ? `
-                <!-- OTP -->
+                <!-- OTP Block -->
                 <div style="
                   text-align: center;
                   margin: 30px 0;
                 ">
                   <div style="
                     display: inline-block;
-                    padding: 18px 30px;
-                    background-color: #f5f5f5;
+                    padding: 18px 32px;
+                    background-color: #f8fafc;
                     border: 2px dashed ${primaryColor};
                     border-radius: 8px;
                     letter-spacing: 8px;
-                    font-size: 28px;
+                    font-size: 32px;
                     font-weight: bold;
-                    color: #333;
+                    color: #0f172a;
                   ">
-                    ${otp ?? ''}
+                    ${otp ?? '------'}
                   </div>
                 </div>
 
                 <p style="
                   font-size: 14px;
-                  color: #777;
+                  color: #64748b;
                   text-align: center;
+                  margin-bottom: 20px;
                 ">
-                  Enter this code in the verification screen.
+                  Enter this code on the verification screen to proceed.
                 </p>
               `
               : `
-                <!-- Button -->
+                <!-- Button Block -->
                 <div style="
                   text-align: center;
                   margin: 30px 0;
@@ -199,21 +140,31 @@ export const Email_Template = async (
                     ${buttonText}
                   </a>
                 </div>
+
+                <!-- Fallback URL Link -->
+                <p style="
+                  font-size: 13px;
+                  color: #94a3b8;
+                  word-break: break-all;
+                ">
+                  If the button above doesn't work, copy and paste this link into your browser: <br>
+                  <a href="${link ?? '#'}" style="color: ${primaryColor};">${link ?? '#'}</a>
+                </p>
               `
           }
 
           <p style="
             font-size: 14px;
-            color: #777;
+            color: #64748b;
+            margin-bottom: 8px;
           ">
-            This ${
-              isOtp ? 'code' : 'link'
-            } will expire in <strong>15 minutes</strong>.
+            This ${isOtp ? 'code' : 'link'} will expire in <strong>15 minutes</strong>.
           </p>
 
           <p style="
             font-size: 14px;
-            color: #777;
+            color: #64748b;
+            margin-top: 0;
           ">
             If you did not request this, please ignore this email.
           </p>
@@ -222,15 +173,15 @@ export const Email_Template = async (
 
         <!-- Footer -->
         <div style="
-          background-color: #f1f1f1;
-          padding: 12px;
+          background-color: #f8fafc;
+          border-top: 1px solid #e2e8f0;
+          padding: 16px;
           text-align: center;
           font-size: 13px;
-          color: #888;
+          color: #94a3b8;
         ">
-          <p>
-            © ${new Date().getFullYear()} Messenger.
-            All rights reserved.
+          <p style="margin: 0;">
+            &copy; ${new Date().getFullYear()} Messenger. All rights reserved.
           </p>
         </div>
 

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { CreateUserDto, LoginDto } from './dto/create-auth.dto';
 import { JwtService } from '@nestjs/jwt';
-import { AuthTokenEntity, UsersEntity, UserSessionEntity } from './entities/auth.entity';
+import { AuthOtpEntity, AuthTokenEntity, UsersEntity, UserSessionEntity } from './entities/auth.entity';
 import { MoreThan, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from "bcrypt";
@@ -19,6 +19,9 @@ export class AuthService {
 
     @InjectRepository(AuthTokenEntity)
     private auth_repo: Repository<AuthTokenEntity>,
+
+    @InjectRepository(AuthOtpEntity)
+    private auth_otp_repo: Repository<AuthOtpEntity>,
 
     @InjectRepository(UserSessionEntity)
     private userSessionRepository: Repository<UserSessionEntity>,
@@ -94,12 +97,21 @@ export class AuthService {
     let isAuthenticated = false;
 
     if (otp) {
-      const otpRecord = await this.auth_repo.findOne({
+      // const otpRecord = await this.auth_repo.findOne({
+      //   where: {
+      //     userId: user.userId,
+      //     token: otp,
+      //     used: false,
+      //   },
+      // });
+
+      const otpRecord = await this.auth_otp_repo.findOne({
         where: {
           userId: user.userId,
-          token: otp,
-          used: false,
-        },
+          isUsed: false
+        }, order: {
+          createdAt: 'DESC'
+        }
       });
 
       if (!otpRecord) {
@@ -116,9 +128,25 @@ export class AuthService {
         };
       }
 
+      if (otpRecord.attempts >= 5) {
+        otpRecord.isUsed = true; // Invalidate OTP due to too many failed attempts
+        await this.auth_otp_repo.save(otpRecord);
+        throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
+      }
+
+      const isMatch = await bcrypt.compare(otp, otpRecord.otpHash);
+
+      if (!isMatch) {
+        // Increment failed attempts on wrong code
+        otpRecord.attempts += 1;
+        await this.auth_otp_repo.save(otpRecord);
+        throw new UnauthorizedException('Invalid OTP');
+      }
+
       // Mark the OTP as used
-      otpRecord.used = true;
-      await this.auth_repo.save(otpRecord);
+      otpRecord.isUsed = true;
+      await this.auth_otp_repo.save(otpRecord);
+
       isAuthenticated = true;
 
     } else if (password) {
@@ -133,7 +161,7 @@ export class AuthService {
           message: 'Wrong password',
         };
       }
-      
+
       isAuthenticated = true;
     }
 

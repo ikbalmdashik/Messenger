@@ -11,6 +11,7 @@ const API_ENDPOINTS = {
     Login: defaultURL + "/auth/login",
     GetUserByToken: defaultURL + "/auth/getUserByToken",
     SendLink: defaultURL + "/auth/sendLink",
+    SendOtp: defaultURL + "/auth/sendOtp",
     Validate: defaultURL + "/auth/validate",
     UpdatePassword: defaultURL + "/auth/resetPassword",
     VerifyOtp: defaultURL + "/auth/",

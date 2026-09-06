@@ -91,7 +91,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     passwordError,
     loadingState,
     contactOptions = [],
-    purpose = "VERIFY_LOGIN",
+    purpose = "VERIFY_OTP",
     onVerifySuccess,
 }) => {
     /* =====================================================
@@ -269,7 +269,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
 
         try {
             await axios.post(
-                API_ENDPOINTS.SendLink,
+                API_ENDPOINTS.SendOtp,
                 { email: contact.value, type: purpose },
                 { withCredentials: true }
             );

@@ -64,9 +64,14 @@ export class AuthController {
   @Post('/sendLink')
   async sendLink(
     @Body('email') email: string,
-    @Body('type') type: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_LOGIN',
+    @Body('type') type: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'VERIFY_OTP',
   ) {
     return await this.mailService.Send_Link(email, type);
+  }
+
+  @Post('/sendOtp')
+  async sendOtp (@Body('email') email: string) {
+    return await this.mailService.send_otp(email)
   }
 
   // @Get('/validate')

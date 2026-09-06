@@ -77,33 +77,40 @@ export enum OtpType {
   FORGOT_PASSWORD = "FORGOT_PASSWORD",
 }
 
-@Entity("auth_otps")
+@Entity('auth_otps')
+// Index for fast validation lookups
+@Index('IDX_USER_OTP_LOOKUP', ['userId', 'usedFor', 'isUsed', 'expiresAt'])
 export class AuthOtpEntity {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid') // 1. Use UUIDs instead of auto-incrementing integers
+  id: string;
 
-  @Column()
+  @Column({ type: 'int' }) // Ensure explicit type if referencing User primary key
   userId: number;
 
-  @Column()
+  // Foreign Key Relationship (Optional but recommended for data integrity)
+  @ManyToOne(() => UsersEntity, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
+  user: UsersEntity;
+
+  @Column({ length: 255 })
   otpHash: string;
 
-  @Column({
-    type: "enum",
-    enum: OtpType,
-  })
-  type: OtpType;
-
   @Column()
+  usedFor: string;
+
+  @Column({ type: 'timestamp with time zone' }) // 2. Explicit timezone-aware timestamp
   expiresAt: Date;
 
   @Column({ default: false })
-  used: boolean;
+  isUsed: boolean;
 
   @Column({ default: 0 })
   attempts: number;
 
-  @CreateDateColumn()
+  @Column({ nullable: true }) // 3. Store requester IP to prevent brute-force attacks
+  ipAddress?: string;
+
+  @CreateDateColumn({ type: 'timestamp with time zone' })
   createdAt: Date;
 }
 
