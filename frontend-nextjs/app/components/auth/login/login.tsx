@@ -237,25 +237,29 @@ const MultiStepLogin = () => {
      */
 
     const handleVerifySuccess = useCallback(
-        async (method: "PASSWORD" | "OTP") => {
+        async (method: "PASSWORD" | "OTP", token: string | null) => {
             setIsPasswordAlertOpen(false);
-
             /*
              * Re-check email state or route directly to Chat page
              */
             try {
                 const currentEmail = email || getValues("email");
-                const response = await axios.post(API_ENDPOINTS.IsEmailExist, {
-                    email: currentEmail,
-                });
+                const response = await axios.post(API_ENDPOINTS.Login, {
+                    token: token,
+                }, { withCredentials: true }
+                );
 
-                if (response.data?.isEmailVerified === false) {
+                const getUserData = await axios.post(API_ENDPOINTS.GetUserByToken, {
+                    token: await response.data.access_token
+                }, { withCredentials: true })
+
+                if (await getUserData.data?.isEmailVerified === false) {
                     setStep(5);
                     return;
                 }
 
-                if (response.data?.userId) {
-                    sessionStorage.setItem("loginId", `${response.data.userId}`);
+                if (await getUserData.data?.userId) {
+                    sessionStorage.setItem("loginId", `${await getUserData.data.userId}`);
                 }
 
                 router.push(Routes.Chat);

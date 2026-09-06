@@ -1,11 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { CreateUserDto, LoginDto } from './dto/create-auth.dto';
 import { JwtService } from '@nestjs/jwt';
-import { AuthTokenEntity, UsersEntity } from './entities/auth.entity';
-import { Repository } from 'typeorm';
+import { AuthTokenEntity, UsersEntity, UserSessionEntity } from './entities/auth.entity';
+import { MoreThan, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from "bcrypt";
 import { ChatMessageEntity } from 'src/chat/entities/chat.entity';
+import { customAlphabet } from 'nanoid';
 
 @Injectable()
 export class AuthService {
@@ -18,6 +19,9 @@ export class AuthService {
 
     @InjectRepository(AuthTokenEntity)
     private auth_repo: Repository<AuthTokenEntity>,
+
+    @InjectRepository(UserSessionEntity)
+    private userSessionRepository: Repository<UserSessionEntity>,
 
     private jwtService: JwtService
   ) { };
@@ -62,7 +66,7 @@ export class AuthService {
     }
   }
 
-  // login
+  // validate user and send token
   async validateUser(loginDto: LoginDto) {
     const { email, password, otp } = loginDto;
 
@@ -86,7 +90,7 @@ export class AuthService {
         where: {
           userId: user.userId,
           token: otp,
-          type: 'VERIFY_LOGIN',
+          usedFor: 'VERIFY_LOGIN',
           used: false,
         },
       });
@@ -109,8 +113,6 @@ export class AuthService {
       // Mark OTP as used
       otpRecord.used = true;
       await this.auth_repo.save(otpRecord);
-
-      return user;
     }
 
     // =====================================================
@@ -122,8 +124,6 @@ export class AuthService {
         user.password,
       );
 
-      console.log(password)
-
       if (!isPasswordValid) {
         return {
           success: false,
@@ -131,7 +131,36 @@ export class AuthService {
         };
       }
 
-      return user;
+      await this.auth_repo.update(
+        {
+          userId: user.userId,
+          used: false,
+        },
+        {
+          used: true,
+          usedFor: "Invalidated by new token request", // Optional: record reason
+        }
+      );
+
+      const generateToken = customAlphabet(
+        '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+        64,
+      );
+
+      const token = generateToken();
+
+      const newAuth = await this.auth_repo.save({
+        userId: user.userId,
+        token: token,
+        usedFor: "Unused!",
+        createdAt: new Date(),
+        expiresAt: new Date(
+          Date.now() + 1000 * 60 * 15,
+        ),
+        used: false,
+      });
+
+      return { success: true, token: newAuth.token };
     }
 
     // =====================================================
@@ -143,7 +172,7 @@ export class AuthService {
     };
   }
 
-  async validateTokenAndProcess(token: string) {
+  async validateTokenAndLogin(token: string) {
     const record = await this.auth_repo.findOne({
       where: { token },
     });
@@ -170,49 +199,42 @@ export class AuthService {
       throw new BadRequestException('User not found');
     }
 
-    // If token is for email verification
-    if (record.type === 'VERIFY_EMAIL') {
-      user.isEmailVerified = true;
-      await this.userRepository.save(user);
+    const existingSession = await this.userSessionRepository.findOne({
+      where: {
+        userId: user.userId,
+        expiresAt: MoreThan(new Date()),
+      },
+      order: {
+        createdAt: "DESC", // Get the most recent active session
+      },
+    });
 
-      await this.auth_repo.update({ id: record.id }, { used: true });
-
-      return {
-        success: true,
-        action: 'EMAIL_VERIFIED',
-        message: 'Email successfully verified',
-        isUsed: record.used,
-        email: user.email,
-      };
+    // 2. Return existing valid token if present
+    if (existingSession) {
+      return { userId: user.userId, access_token: existingSession.tokenIdentifier }
     }
 
-    if (record.type === 'RESET_PASSWORD') {
-      return {
-        success: true,
-        action: 'RESET_PASSWORD',
-        message: 'You can reset your password now.',
-        isUsed: record.used,
-        email: user.email,
-      };
-    }
+    const sessionJwt = this.jwtService.sign({
+      sub: {
+        user: user.userId
+      }
+    }, {
+      secret: process.env.JWT_SECRET,
+      expiresIn: '1d'
+    });
 
-    if (record.type === 'VERIFY_LOGIN') {
-      return {
-        success: true,
-        action: 'VERIFY_LOGIN',
-        message: 'You login is verified.',
-        isUsed: record.used,
-        email: user.email,
-      };
-    }
+    const newSession = await this.userSessionRepository.save({
+      userId: user.userId,
+      user: user,
+      tokenIdentifier: sessionJwt,
+      deviceInfo: "-",
+      ipAddress: "-",
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
 
-    return {
-      success: true,
-      action: 'SOME_ACTIONS',
-      message: 'Some message.',
-      isUsed: record.used,
-      email: user.email,
-    };
+    return { userId: user.userId, access_token: newSession.tokenIdentifier };
   }
 
   async change_password(token: string, newPassword: string) {
@@ -255,6 +277,32 @@ export class AuthService {
     await this.auth_repo.update({ id: resetToken.id }, { used: true });
 
     return { success: true };
+  }
+
+  async getUserByToken(token: string): Promise<UsersEntity> {
+    // 1. Find session matching the token and ensure it is not expired
+    console.log("TOKEN RECEIVED:", token);
+    if (!token) {
+      throw new UnauthorizedException("Token not found!")
+    }
+
+
+    const session = await this.userSessionRepository.findOne({
+      where: {
+        tokenIdentifier: token,
+        expiresAt: MoreThan(new Date()), // Exclude expired sessions
+      },
+
+      relations: {
+        user: true
+      }
+    });
+
+    if (!session || !session.user) {
+      throw new UnauthorizedException('Invalid or expired session token.');
+    }
+
+    return session.user;
   }
 
   // get data by id

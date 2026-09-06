@@ -58,7 +58,7 @@ export type PasswordModalProps = {
     contactOptions?: ContactOption[];
     purpose?: VerificationPurpose;
 
-    onVerifySuccess?: (method: "PASSWORD" | "OTP") => void | Promise<void>;
+    onVerifySuccess?: (method: "PASSWORD" | "OTP", token: string | null) => void | Promise<void>;
     onSwitchAccount?: () => void;
 };
 
@@ -112,6 +112,8 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [apiError, setApiError] = useState<string | null>(null);
 
+    const tokenRef = React.useRef<string | null>(null);
+
     /* =====================================================
        REACT HOOK FORM
     ===================================================== */
@@ -159,9 +161,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     };
 
     const handleVerifySuccess = useCallback(
-        async (method: "PASSWORD" | "OTP") => {
+        async (method: "PASSWORD" | "OTP", token: string | null) => {
             if (onVerifySuccess) {
-                await onVerifySuccess(method);
+                await onVerifySuccess(method, token);
                 return;
             }
             onOpenChange(false);
@@ -229,7 +231,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
 
         try {
             const response = await axios.post(
-                API_ENDPOINTS.LoginAuth,
+                API_ENDPOINTS.ValidateUser,
                 { email: subtitleAccount, password, type: purpose },
                 { withCredentials: true }
             );
@@ -239,7 +241,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                 return;
             }
 
-            await handleVerifySuccess("PASSWORD");
+            tokenRef.current = await response.data?.token || null;
+
+            await handleVerifySuccess("PASSWORD", tokenRef.current);
         } catch (error) {
             console.error("Password verification failed:", error);
             setApiError(getAxiosErrorMessage(error));
@@ -300,8 +304,8 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
 
         try {
             const response = await axios.post(
-                API_ENDPOINTS.LoginAuth,
-                { email: sentContactValue, otp, type: purpose },
+                API_ENDPOINTS.ValidateUser,
+                { email: sentContactValue, otp, usedFor: purpose },
                 { withCredentials: true }
             );
 
@@ -309,6 +313,8 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                 setApiError(response.data?.message || "OTP verification failed.");
                 return;
             }
+
+            tokenRef.current = await response.data?.token || null;
 
             setViewMode("OTP_SUCCESS");
             setSuccessMessage("Verification successful!");
@@ -591,7 +597,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                 variant="soft"
                 color="gray"
                 mt={"2"}
-                onClick={() => handleVerifySuccess("OTP")}
+                onClick={() => handleVerifySuccess("OTP", tokenRef.current)}
                 style={{ width: "100%" }}
             >
                 Skip for now
@@ -698,7 +704,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             </Box>
             <Button
                 type="button"
-                onClick={() => handleVerifySuccess("OTP")}
+                onClick={() => handleVerifySuccess("OTP", tokenRef.current)}
                 style={{ width: "100%" }}
             >
                 Continue

@@ -1,5 +1,13 @@
 import { ChatMessageEntity } from "src/chat/entities/chat.entity";
-import { Column, Entity, JoinColumn, OneToMany, PrimaryGeneratedColumn, CreateDateColumn } from "typeorm";
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  Index, ManyToOne,
+  UpdateDateColumn } from "typeorm";
 
 export class Auth { }
 
@@ -35,9 +43,10 @@ export class UsersEntity {
   @OneToMany(() => ChatMessageEntity, chat => chat.receiver)
   @JoinColumn({ name: "receiveMessages" })
   receivedMessages: ChatMessageEntity[];
+
+  @OneToMany(() => UserSessionEntity, (session) => session.user)
+  sessions: UserSessionEntity[];
 }
-
-
 
 
 @Entity('auth_tokens')
@@ -52,7 +61,7 @@ export class AuthTokenEntity {
   token: string;
 
   @Column()
-  type: 'RESET_PASSWORD' | 'VERIFY_EMAIL' | 'VERIFY_LOGIN';
+  usedFor: String;
 
   @Column()
   expiresAt: Date;
@@ -96,4 +105,54 @@ export class AuthOtpEntity {
 
   @CreateDateColumn()
   createdAt: Date;
+}
+
+export enum SessionStatus {
+  ACTIVE = 'ACTIVE',
+  REVOKED = 'REVOKED',
+  EXPIRED = 'EXPIRED',
+}
+
+@Entity('user_sessions')
+export class UserSessionEntity {
+  @PrimaryGeneratedColumn()
+  sessionId: number;
+
+  @Column()
+  userId: number;
+
+  @ManyToOne(() => UsersEntity, (user) => user.sessions, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
+  user: UsersEntity;
+
+  // Stores the unique JWT ID (jti claim) or SHA-256 hash of the token
+  @Column({ unique: true })
+  @Index()
+  tokenIdentifier: string;
+
+  // Session metadata for device management
+  @Column({ nullable: true })
+  deviceInfo: string;
+
+  @Column({ nullable: true })
+  ipAddress: string;
+
+  @Column({
+    type: 'enum',
+    enum: SessionStatus,
+    default: SessionStatus.ACTIVE,
+  })
+  status: SessionStatus;
+
+  @Column({ type: 'timestamp' })
+  expiresAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastActiveAt: Date;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }
