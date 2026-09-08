@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { CreateChatDto } from './dto/create-chat.dto';
+import { JwtAuthGuard } from '@/auth/auth.guard';
 
 @Controller('chat')
 export class ChatController {
@@ -12,6 +13,7 @@ export class ChatController {
     return await this.chatService.CreateChat(createChatDto);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/messages')
   async getMessages() {
     return await this.chatService.getMessages();

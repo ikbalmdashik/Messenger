@@ -6,18 +6,30 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthOtpEntity, AuthTokenEntity, UsersEntity, UserSessionEntity } from './entities/auth.entity';
 import { ChatMessageEntity } from 'src/chat/entities/chat.entity';
 import { MailService } from 'src/mailer/mail.service';
+import { PassportModule } from '@nestjs/passport';
+import { JwtStrategy } from './jwt.strategy';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ UsersEntity, ChatMessageEntity, AuthTokenEntity, AuthOtpEntity, UserSessionEntity ]),
+    TypeOrmModule.forFeature([
+      UsersEntity,
+      ChatMessageEntity,
+      AuthTokenEntity,
+      AuthOtpEntity,
+      UserSessionEntity,
+    ]),
+
+    PassportModule.register({
+      defaultStrategy: 'jwt',
+    }),
+
     JwtModule.register({
-      secret: "abc123def", // keep it into .env file
-      // signOptions: {
-      //   expiresIn: ""
-      // }
-    })
+      secret: process.env.JWT_SECRET,
+    }),
+
   ],
   controllers: [AuthController],
-  providers: [AuthService, MailService],
+  providers: [AuthService, MailService, JwtStrategy],
+  exports: [PassportModule, JwtModule, JwtStrategy]
 })
 export class AuthModule {}

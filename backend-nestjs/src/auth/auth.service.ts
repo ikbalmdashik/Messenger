@@ -293,6 +293,11 @@ export class AuthService {
   }
 
   async validateTokenAndLogin(token: string) {
+
+    if(!token) {
+      throw new BadRequestException("Token is required!")
+    }
+
     const record = await this.auth_repo.findOne({
       where: { token },
     });
@@ -318,6 +323,9 @@ export class AuthService {
     if (!user) {
       throw new BadRequestException('User not found');
     }
+
+    record.used = true;
+    await this.auth_repo.save(record);
 
     const existingSession = await this.userSessionRepository.findOne({
       where: {
