@@ -188,7 +188,7 @@ const MultiStepLogin = () => {
 
     const sendVerificationLink = useCallback(
         async (emailInput: string, type: string) => {
-            return await axios.post(API_ENDPOINTS.SendEmailVerificationLink , {
+            return await axios.post(API_ENDPOINTS.SendEmailVerificationLink, {
                 email: emailInput,
                 type: type,
             });
@@ -258,7 +258,8 @@ const MultiStepLogin = () => {
                     return;
                 }
 
-                sessionStorage.setItem("loginId", `${getUserData.data.user}`)
+
+                sessionStorage.setItem("loginId", `${getUserData.data.userId}`)
 
                 router.push(Routes.Chat);
             } catch {

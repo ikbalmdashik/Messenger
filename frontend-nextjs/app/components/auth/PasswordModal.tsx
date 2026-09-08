@@ -345,7 +345,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
         try {
             const response = await axios.post(
                 API_ENDPOINTS.UpdatePassword,
-                { token: watch("otpCode"), newPassword },
+                { token: tokenRef.current, newPassword },
                 { withCredentials: true }
             );
 
@@ -357,7 +357,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             setSuccessMessage("Password updated successfully!");
             setViewMode("PASSWORD_UPDATED");
         } catch (error) {
-            console.error("Password update failed:", error);
+            console.log("Password update failed:", error);
             setApiError(getAxiosErrorMessage(error));
         } finally {
             setIsResettingPassword(false);
