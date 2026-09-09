@@ -9,7 +9,7 @@ import { ChatMessageEntity } from 'src/chat/entities/chat.entity';
 import { customAlphabet } from 'nanoid';
 import { AuthLinkAction } from '@/mailer/mail.service';
 
-  export interface ValidateLinkOptions {
+export interface ValidateLinkOptions {
   token: string;
   newPassword?: string;
 }
@@ -294,7 +294,7 @@ export class AuthService {
 
   async validateTokenAndLogin(token: string) {
 
-    if(!token) {
+    if (!token) {
       throw new BadRequestException("Token is required!")
     }
 
@@ -405,6 +405,26 @@ export class AuthService {
     await this.auth_repo.update({ id: resetToken.id }, { used: true });
 
     return { success: true };
+  }
+
+  async findValidToken(token: string) {
+    const tokenRecord = await this.userSessionRepository.findOne({
+      where: {
+        tokenIdentifier: token,
+      }, relations: {
+        user: true
+      }
+    });
+
+    if (!tokenRecord) {
+      return null;
+    }
+
+    if (tokenRecord.expiresAt < new Date()) {
+      return null;
+    }
+
+    return tokenRecord;
   }
 
   async getUserByToken(token: string): Promise<UsersEntity> {
