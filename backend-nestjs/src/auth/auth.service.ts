@@ -365,6 +365,23 @@ export class AuthService {
     return { userId: user.userId, access_token: newSession.tokenIdentifier };
   }
 
+  async logout(token: string) {
+    const session = await this.userSessionRepository.findOne({
+      where: {
+        tokenIdentifier: token,
+      },
+    });
+
+    if (!session) {
+      return;
+    }
+
+    session.expiresAt = new Date();
+    session.lastActiveAt = new Date();
+
+    await this.userSessionRepository.save(session);
+  }
+
   async change_password(token: string, newPassword: string) {
     // 1️ Find token in DB
     const resetToken = await this.auth_repo.findOne({

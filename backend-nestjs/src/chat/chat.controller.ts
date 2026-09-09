@@ -19,7 +19,7 @@ export class ChatController {
     return await this.chatService.getMessages();
   }
 
-  // @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Post("/getConversation")
   async GetConversation(@Body() getConversationDto: Partial<CreateChatDto>) {
     return await this.chatService.GetConversation(getConversationDto);

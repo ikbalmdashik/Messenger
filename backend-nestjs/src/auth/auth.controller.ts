@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, Query, Res, Req, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, Query, Res, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { AuthService, ValidateLinkOptions } from './auth.service';
 import { CreateAuthDto, CreateUserDto, LoginDto, UpdateUserDto } from './dto/create-auth.dto';
 import { AuthLinkAction, MailService } from 'src/mailer/mail.service';
 import { Request, Response } from 'express';
 import { ResetPasswordDto } from './dto/update-auth.dto';
 import { JwtService } from '@nestjs/jwt';
+import { JwtAuthGuard } from './auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -60,6 +61,43 @@ export class AuthController {
     };
   }
 
+  @Post('/logout')
+  async logout(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const token = request.cookies?.access_token;
+
+    if (!token) {
+      // Cookie doesn't exist, but still clear it
+      response.clearCookie('access_token', {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax',
+        path: '/',
+      });
+
+      return {
+        success: true,
+        message: 'Already logged out',
+      };
+    }
+
+    await this.authService.logout(token);
+
+    response.clearCookie('access_token', {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      path: '/',
+    });
+
+    return {
+      success: true,
+      message: 'Logged out successfully',
+    };
+  }
+
 
   @Post('/sendEmailVerifyLink')
   async sendEmailVerifyLink(@Body('email') email: string) {
@@ -110,17 +148,19 @@ export class AuthController {
     return await this.authService.getUserByToken(token);
   }
 
-
+  @UseGuards(JwtAuthGuard)
   @Get("/getAllUsers")
   async GetAllUsers() {
     return this.authService.GetAllUsers();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('getUser/:id')
   async GetDataById(@Param('id') id: number) {
     return this.authService.GetDataById(+id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/updateUser')
   async UpdateUser(@Body() updateUserDto: Partial<UpdateUserDto>) {
     return await this.authService.UpdateUser(updateUserDto);

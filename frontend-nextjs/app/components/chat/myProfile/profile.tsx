@@ -1,12 +1,20 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, {
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+} from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 import API_ENDPOINTS from "@/app/routes/api";
-import useCurrentUser, { initialUser } from "@/app/hooks/user/useCurrentUser";
+import useCurrentUser, {
+  initialUser,
+} from "@/app/hooks/user/useCurrentUser";
 
 import {
   Dialog,
@@ -32,7 +40,9 @@ import {
   Check,
   UserCheck,
   AlertTriangle,
+  LogOut,
 } from "lucide-react";
+import Routes from "@/app/routes/routes";
 
 interface FormFields {
   fullName: string;
@@ -42,10 +52,18 @@ interface FormFields {
 }
 
 const ProfileDialog: React.FC = () => {
+  const router = useRouter();
+
   const [userId, setUserId] = useState<number | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [open, setOpen] = useState(false);
   const [editable, setEditable] = useState(false);
+
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+
+  const [logoutLoading, setLogoutLoading] = useState(false);
 
   const [formInitialValues, setFormInitialValues] = useState({
     fullName: "",
@@ -53,10 +71,120 @@ const ProfileDialog: React.FC = () => {
     phone: "",
   });
 
-  const user = useCurrentUser(userId);
-  const isLoading = userId === null || user === initialUser;
+  /*
+   * ============================================================
+   * Cross-tab logout synchronization
+   * ============================================================
+   *
+   * When one tab logs out:
+   *
+   * Tab 1:
+   *   1. Calls logout API
+   *   2. Broadcasts "logout"
+   *   3. Redirects to login
+   *
+   * Tab 2:
+   *   1. Receives "logout"
+   *   2. Closes profile dialog if open
+   *   3. Redirects to login
+   *
+   * Tab 2 does NOT call the logout API again.
+   */
+  useEffect(() => {
+    const channel = new BroadcastChannel("auth_channel");
 
-  const { register, reset, watch } = useForm<FormFields>({
+    const handleLogoutMessage = (
+      event: MessageEvent
+    ) => {
+      if (event.data?.type === "LOGOUT") {
+        setOpen(false);
+        setConfirmDelete(false);
+        setConfirmLogout(false);
+
+        toast.info(
+          "You have been logged out."
+        );
+
+        router.push(Routes.Login);
+        router.refresh();
+      }
+    };
+
+    channel.addEventListener(
+      "message",
+      handleLogoutMessage
+    );
+
+    return () => {
+      channel.removeEventListener(
+        "message",
+        handleLogoutMessage
+      );
+
+      channel.close();
+    };
+  }, [router]);
+
+  /*
+   * ============================================================
+   * Get currently authenticated user
+   * ============================================================
+   */
+  useEffect(() => {
+    const getAuthenticatedUser = async () => {
+      try {
+        setAuthLoading(true);
+
+        const response = await axios.post(
+          API_ENDPOINTS.GetUserByToken,
+          {},
+          {
+            withCredentials: true,
+          }
+        );
+
+        const user = response.data;
+
+        if (
+          user?.userId !== undefined &&
+          user?.userId !== null
+        ) {
+          setUserId(Number(user.userId));
+        } else {
+          setUserId(null);
+        }
+      } catch (error) {
+        console.log(
+          "Failed to get authenticated user:",
+          error
+        );
+
+        setUserId(null);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    getAuthenticatedUser();
+  }, []);
+
+  /*
+   * ============================================================
+   * Fetch current user's complete information
+   * ============================================================
+   */
+  const user = useCurrentUser(userId);
+
+  const isLoading =
+    authLoading ||
+    userId === null ||
+    user === initialUser;
+
+  const {
+    register,
+    reset,
+    watch,
+  } = useForm<FormFields>({
     defaultValues: {
       fullName: "",
       email: "",
@@ -67,11 +195,11 @@ const ProfileDialog: React.FC = () => {
 
   const watchFields = watch();
 
-  useEffect(() => {
-    const id = Number(sessionStorage.getItem("loginId"));
-    if (!isNaN(id) && id > 0) setUserId(id);
-  }, []);
-
+  /*
+   * ============================================================
+   * Populate form when user data is loaded
+   * ============================================================
+   */
   useEffect(() => {
     if (user && user !== initialUser) {
       const userData = {
@@ -80,7 +208,9 @@ const ProfileDialog: React.FC = () => {
         phone: user.phone || "",
         role: user.role || "",
       };
+
       reset(userData);
+
       setFormInitialValues({
         fullName: userData.fullName,
         email: userData.email,
@@ -89,37 +219,154 @@ const ProfileDialog: React.FC = () => {
     }
   }, [user, reset]);
 
+  /*
+   * ============================================================
+   * Check whether editable fields changed
+   * ============================================================
+   *
+   * Email is intentionally excluded because email editing
+   * is not available yet.
+   */
   const hasChanged = useMemo(
     () =>
-      watchFields.fullName !== formInitialValues.fullName ||
-      watchFields.email !== formInitialValues.email ||
-      watchFields.phone !== formInitialValues.phone,
-    [watchFields, formInitialValues]
+      watchFields.fullName !==
+        formInitialValues.fullName ||
+      watchFields.phone !==
+        formInitialValues.phone,
+    [
+      watchFields.fullName,
+      watchFields.phone,
+      formInitialValues,
+    ]
   );
 
+  /*
+   * ============================================================
+   * Generate avatar initials
+   * ============================================================
+   */
   const initials = useMemo(() => {
-    if (!watchFields.fullName) return "U";
+    if (!watchFields.fullName) {
+      return "U";
+    }
+
     return watchFields.fullName
       .split(" ")
-      .map((n) => n[0])
+      .filter(Boolean)
+      .map((name) => name[0])
       .join("")
       .toUpperCase()
       .slice(0, 2);
   }, [watchFields.fullName]);
 
+  /*
+   * ============================================================
+   * Logout
+   * ============================================================
+   */
+  const handleLogout = useCallback(async () => {
+    if (logoutLoading) {
+      return;
+    }
+
+    try {
+      setLogoutLoading(true);
+
+      /*
+       * Call backend logout endpoint.
+       *
+       * The HTTP-only authentication cookie is automatically
+       * included because withCredentials is enabled.
+       */
+      await axios.post(
+        API_ENDPOINTS.Logout,
+        {},
+        {
+          withCredentials: true,
+        }
+      );
+
+      /*
+       * Tell every other tab that logout happened.
+       */
+      const channel = new BroadcastChannel(
+        "auth_channel"
+      );
+
+      channel.postMessage({
+        type: "LOGOUT",
+      });
+
+      channel.close();
+
+      /*
+       * Close dialogs.
+       */
+      setConfirmLogout(false);
+      setOpen(false);
+
+      toast.success(
+        "Logged out successfully."
+      );
+
+      /*
+       * Redirect current tab.
+       */
+      router.push(Routes.Login);
+      router.refresh();
+    } catch (error) {
+      console.error(
+        "Logout failed:",
+        error
+      );
+
+      toast.error(
+        "Logout failed. Please try again."
+      );
+    } finally {
+      setLogoutLoading(false);
+    }
+  }, [logoutLoading, router]);
+
+  /*
+   * ============================================================
+   * Update profile
+   * ============================================================
+   */
   const handleUpdate = useCallback(async () => {
+    if (userId === null) {
+      toast.error(
+        "User authentication required."
+      );
+
+      return;
+    }
+
     try {
       const updatedData = {
-        userId,
+        userId: Number(userId),
         fullName: watchFields.fullName,
         email: watchFields.email,
         phone: watchFields.phone,
         role: watchFields.role,
       };
 
-      await axios.post(API_ENDPOINTS.UpdateUser, updatedData);
+      console.log(
+        "Updating profile:",
+        updatedData
+      );
 
-      toast.success("Profile updated successfully.");
+      await axios.post(
+        API_ENDPOINTS.UpdateUser,
+        updatedData,
+        {
+          withCredentials: true,
+        }
+      );
+
+      toast.success(
+        "Profile updated successfully."
+      );
 
       setFormInitialValues({
         fullName: updatedData.fullName,
@@ -129,53 +376,146 @@ const ProfileDialog: React.FC = () => {
 
       setEditable(false);
     } catch (error) {
-      toast.error("Failed to update profile.");
-      console.error(error);
+      console.error(
+        "Failed to update profile:",
+        error
+      );
+
+      toast.error(
+        "Failed to update profile."
+      );
     }
   }, [userId, watchFields]);
 
-  const handleConfirmDelete = useCallback(async () => {
-    try {
-      await axios.post(API_ENDPOINTS.DeleteUser, { id: userId });
+  /*
+   * ============================================================
+   * Delete account
+   * ============================================================
+   */
+  const handleConfirmDelete =
+    useCallback(async () => {
+      if (userId === null) {
+        toast.error(
+          "User authentication required."
+        );
 
-      toast.success("User account deleted successfully.");
-      setConfirmDelete(false);
-      setOpen(false);
-    } catch (error) {
-      toast.error("Delete failed. Please try again.");
-      console.error(error);
-    }
-  }, [userId]);
+        return;
+      }
 
-  const handleMyProfileClick = useCallback(async () => {
-    if (!userId) return;
-    try {
-      const response = await axios.get(API_ENDPOINTS.GetUserById + userId);
-      const profile = response.data;
+      try {
+        await axios.post(
+          API_ENDPOINTS.DeleteUser,
+          {
+            id: Number(userId),
+          },
+          {
+            withCredentials: true,
+          }
+        );
+
+        /*
+         * Broadcast logout because deleting the account
+         * also invalidates the current authentication session.
+         */
+        const channel = new BroadcastChannel(
+          "auth_channel"
+        );
+
+        channel.postMessage({
+          type: "LOGOUT",
+        });
+
+        channel.close();
+
+        toast.success(
+          "User account deleted successfully."
+        );
+
+        setConfirmDelete(false);
+        setOpen(false);
+
+        router.push(Routes.Login);
+        router.refresh();
+      } catch (error) {
+        console.error(
+          "Failed to delete user:",
+          error
+        );
+
+        toast.error(
+          "Delete failed. Please try again."
+        );
+      }
+    }, [userId, router]);
+
+  /*
+   * ============================================================
+   * Open profile
+   * ============================================================
+   */
+  const handleMyProfileClick =
+    useCallback(() => {
+      if (authLoading) {
+        toast.info("Loading profile...");
+        return;
+      }
+
+      if (userId === null) {
+        toast.error(
+          "Authentication required."
+        );
+
+        return;
+      }
+
+      if (user === initialUser) {
+        toast.info(
+          "Profile information is still loading."
+        );
+
+        return;
+      }
 
       setFormInitialValues({
-        fullName: profile.fullName || "",
-        email: profile.email || "",
-        phone: profile.phone || "",
+        fullName: user.fullName || "",
+        email: user.email || "",
+        phone: user.phone || "",
       });
 
-      reset(profile);
+      reset({
+        fullName: user.fullName || "",
+        email: user.email || "",
+        phone: user.phone || "",
+        role: user.role || "",
+      });
+
       setEditable(false);
       setOpen(true);
-    } catch (err) {
-      toast.error("Failed to fetch profile details.");
-    }
-  }, [userId, reset]);
+    }, [
+      authLoading,
+      userId,
+      user,
+      reset,
+    ]);
 
   return (
     <>
-      <Dialog.Root open={open} onOpenChange={setOpen}>
+      {/* ========================================================
+          PROFILE DIALOG
+      ========================================================= */}
+
+      <Dialog.Root
+        open={open}
+        onOpenChange={setOpen}
+      >
         <Dialog.Trigger>
           <IconButton
             variant="soft"
             color="gray"
             size="2"
-            onClick={handleMyProfileClick}
+            onClick={
+              handleMyProfileClick
+            }
             className="cursor-pointer rounded-full"
           >
             <UserIcon className="w-4 h-4 text-slate-700 dark:text-slate-200" />
@@ -183,33 +523,61 @@ const ProfileDialog: React.FC = () => {
         </Dialog.Trigger>
 
         <Dialog.Content className="max-w-md p-6 rounded-2xl bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-xl border border-[var(--gray-a4)] shadow-2xl">
-          <Flex align="center" justify="between" mb="3">
+          <Flex
+            align="center"
+            justify="between"
+            mb="3"
+          >
             <Box>
               <Dialog.Title className="text-lg font-bold text-slate-900 dark:text-slate-100">
                 User Profile
               </Dialog.Title>
+
               <Dialog.Description className="text-xs text-slate-500 dark:text-slate-400">
-                Manage your account credentials and personal information.
+                Manage your account credentials
+                and personal information.
               </Dialog.Description>
             </Box>
 
             <Dialog.Close>
-              <IconButton variant="ghost" color="gray" size="1" className="cursor-pointer">
+              <IconButton
+                variant="ghost"
+                color="gray"
+                size="1"
+                className="cursor-pointer"
+              >
                 <X className="w-4 h-4" />
               </IconButton>
             </Dialog.Close>
           </Flex>
 
           {isLoading ? (
-            <Flex align="center" justify="center" className="py-8">
-              <Text size="2" color="gray">
+            <Flex
+              align="center"
+              justify="center"
+              className="py-8"
+            >
+              <Text
+                size="2"
+                color="gray"
+              >
                 Loading profile information...
               </Text>
             </Flex>
           ) : (
-            <Flex direction="column" gap="4">
-              {/* Profile Card Header */}
-              <Flex align="center" gap="3" className="p-3 rounded-xl bg-slate-200/50 dark:bg-slate-800/50 border border-[var(--gray-a3)]">
+            <Flex
+              direction="column"
+              gap="4"
+            >
+              {/* ==================================================
+                  PROFILE HEADER
+              ================================================== */}
+
+              <Flex
+                align="center"
+                gap="3"
+                className="p-3 rounded-xl bg-slate-200/50 dark:bg-slate-800/50 border border-[var(--gray-a3)]"
+              >
                 <Avatar
                   size="4"
                   radius="full"
@@ -217,29 +585,62 @@ const ProfileDialog: React.FC = () => {
                   color="sky"
                   variant="soft"
                 />
+
                 <Box className="min-w-0 flex-1">
-                  <Text size="3" weight="bold" className="text-slate-900 dark:text-slate-100 truncate block">
-                    {watchFields.fullName || "User Account"}
+                  <Text
+                    size="3"
+                    weight="bold"
+                    className="text-slate-900 dark:text-slate-100 truncate block"
+                  >
+                    {watchFields.fullName ||
+                      "User Account"}
                   </Text>
-                  <Text size="1" color="gray" className="truncate block">
+
+                  <Text
+                    size="1"
+                    color="gray"
+                    className="truncate block"
+                  >
                     {watchFields.email}
                   </Text>
                 </Box>
+
                 {watchFields.role && (
-                  <Badge color="sky" variant="soft" size="1" className="capitalize">
+                  <Badge
+                    color="sky"
+                    variant="soft"
+                    size="1"
+                    className="capitalize"
+                  >
                     {watchFields.role}
                   </Badge>
                 )}
               </Flex>
 
-              {/* Form Input Fields */}
-              <Flex direction="column" gap="3">
+              {/* ==================================================
+                  FORM FIELDS
+              ================================================== */}
+
+              <Flex
+                direction="column"
+                gap="3"
+              >
+                {/* Full Name */}
+
                 <Box>
-                  <Text size="1" weight="medium" color="gray" className="mb-1 block">
+                  <Text
+                    size="1"
+                    weight="medium"
+                    color="gray"
+                    className="mb-1 block"
+                  >
                     Full Name
                   </Text>
+
                   <TextField.Root
-                    {...register("fullName")}
+                    {...register(
+                      "fullName"
+                    )}
                     disabled={!editable}
                     placeholder="Full Name"
                     size="2"
@@ -252,28 +653,49 @@ const ProfileDialog: React.FC = () => {
                   </TextField.Root>
                 </Box>
 
-                <Box>
-                  <Text size="1" weight="medium" color="gray" className="mb-1 block">
-                    Email Address
-                  </Text>
-                  <TextField.Root
-                    {...register("email")}
-                    disabled={!editable}
-                    placeholder="Email Address"
-                    size="2"
-                    variant="surface"
-                    className="rounded-lg"
-                  >
-                    <TextField.Slot>
-                      <Mail className="w-4 h-4 text-slate-400" />
-                    </TextField.Slot>
-                  </TextField.Root>
-                </Box>
+                {/* Email */}
 
                 <Box>
-                  <Text size="1" weight="medium" color="gray" className="mb-1 block">
+                  <Text
+                    size="1"
+                    weight="medium"
+                    color="gray"
+                    className="mb-1 block"
+                  >
+                    Email Address
+                  </Text>
+
+                  <div
+                    title="Email update feature is coming soon."
+                    className="cursor-not-allowed"
+                  >
+                    <TextField.Root
+                      {...register("email")}
+                      disabled
+                      placeholder="Email Address"
+                      size="2"
+                      variant="surface"
+                      className="rounded-lg opacity-70"
+                    >
+                      <TextField.Slot>
+                        <Mail className="w-4 h-4 text-slate-400" />
+                      </TextField.Slot>
+                    </TextField.Root>
+                  </div>
+                </Box>
+
+                {/* Phone */}
+
+                <Box>
+                  <Text
+                    size="1"
+                    weight="medium"
+                    color="gray"
+                    className="mb-1 block"
+                  >
                     Phone Number
                   </Text>
+
                   <TextField.Root
                     {...register("phone")}
                     disabled={!editable}
@@ -288,10 +710,18 @@ const ProfileDialog: React.FC = () => {
                   </TextField.Root>
                 </Box>
 
+                {/* Role */}
+
                 <Box>
-                  <Text size="1" weight="medium" color="gray" className="mb-1 block">
+                  <Text
+                    size="1"
+                    weight="medium"
+                    color="gray"
+                    className="mb-1 block"
+                  >
                     Account Role
                   </Text>
+
                   <TextField.Root
                     {...register("role")}
                     disabled
@@ -307,40 +737,106 @@ const ProfileDialog: React.FC = () => {
                 </Box>
               </Flex>
 
-              <Separator size="4" className="my-1 opacity-50" />
+              <Separator
+                size="4"
+                className="my-1 opacity-50"
+              />
 
-              {/* Action Buttons Footer */}
-              <Flex align="center" justify="between">
-                <Button
-                  color="red"
-                  variant="soft"
-                  size="2"
-                  onClick={() => setConfirmDelete(true)}
-                  className="cursor-pointer"
+              {/* ==================================================
+                  ACTION BUTTONS
+              ================================================== */}
+
+              <Flex
+                align="center"
+                justify="between"
+                gap="2"
+              >
+                <Flex
+                  align="center"
+                  gap="2"
                 >
-                  <Trash2 className="w-4 h-4 mr-1" />
-                  Delete
-                </Button>
+                  {/* Delete */}
+
+                  <Button
+                    color="red"
+                    variant="soft"
+                    size="2"
+                    onClick={() =>
+                      setConfirmDelete(
+                        true
+                      )
+                    }
+                    className="cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Delete
+                  </Button>
+
+                  {/* Logout */}
+
+                  <Button
+                    color="gray"
+                    variant="soft"
+                    size="2"
+                    onClick={() =>
+                      setConfirmLogout(
+                        true
+                      )
+                    }
+                    disabled={
+                      logoutLoading
+                    }
+                    className="cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4 mr-1" />
+
+                    Logout
+                  </Button>
+                </Flex>
+
+                {/* Edit / Save / Cancel */}
 
                 <Button
-                  color={editable && hasChanged ? "sky" : "gray"}
-                  variant={editable ? "solid" : "soft"}
+                  color={
+                    editable &&
+                    hasChanged
+                      ? "sky"
+                      : "gray"
+                  }
+                  variant={
+                    editable
+                      ? "solid"
+                      : "soft"
+                  }
                   size="2"
                   className="cursor-pointer"
                   onClick={() => {
                     if (!editable) {
                       setEditable(true);
-                    } else if (editable && hasChanged) {
+                    } else if (
+                      editable &&
+                      hasChanged
+                    ) {
                       handleUpdate();
-                    } else if (editable && !hasChanged) {
+                    } else if (
+                      editable &&
+                      !hasChanged
+                    ) {
                       reset({
                         ...watchFields,
-                        fullName: formInitialValues.fullName,
-                        email: formInitialValues.email,
-                        phone: formInitialValues.phone,
+                        fullName:
+                          formInitialValues.fullName,
+                        email:
+                          formInitialValues.email,
+                        phone:
+                          formInitialValues.phone,
                       });
+
                       setEditable(false);
-                      toast.info("Changes discarded.");
+
+                      toast.info(
+                        "Changes discarded."
+                      );
                     }
                   }}
                 >
@@ -350,18 +846,22 @@ const ProfileDialog: React.FC = () => {
                       Edit Profile
                     </>
                   )}
-                  {editable && hasChanged && (
-                    <>
-                      <Check className="w-4 h-4 mr-1" />
-                      Save Changes
-                    </>
-                  )}
-                  {editable && !hasChanged && (
-                    <>
-                      <X className="w-4 h-4 mr-1" />
-                      Cancel
-                    </>
-                  )}
+
+                  {editable &&
+                    hasChanged && (
+                      <>
+                        <Check className="w-4 h-4 mr-1" />
+                        Save Changes
+                      </>
+                    )}
+
+                  {editable &&
+                    !hasChanged && (
+                      <>
+                        <X className="w-4 h-4 mr-1" />
+                        Cancel
+                      </>
+                    )}
                 </Button>
               </Flex>
             </Flex>
@@ -369,45 +869,163 @@ const ProfileDialog: React.FC = () => {
         </Dialog.Content>
       </Dialog.Root>
 
-      {/* Delete Confirmation Modal */}
-      <Dialog.Root open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <Dialog.Content className="max-w-sm p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-[var(--gray-a4)] shadow-2xl">
-          <Flex align="center" gap="2" className="mb-2 text-rose-500">
-            <AlertTriangle className="w-5 h-5" />
-            <Dialog.Title className="text-base font-bold">Confirm Account Deletion</Dialog.Title>
+      {/* ========================================================
+          LOGOUT CONFIRMATION
+      ========================================================= */}
+
+      <Dialog.Root
+        open={confirmLogout}
+        onOpenChange={
+          setConfirmLogout
+        }
+      >
+        <Dialog.Content maxWidth={"350px"} className="max-w-sm p-5 rounded bg-slate-50 dark:bg-slate-900 border border-[var(--gray-a4)] shadow-2xl">
+          <Flex
+            align="center"
+            gap="2"
+            mb={"2"}
+          >
+            <LogOut className="w-5 h-5 mb-4 text-slate-500" />
+
+            <Dialog.Title className="text-base font-bold text-slate-900 dark:text-slate-100">
+              Confirm Logout
+            </Dialog.Title>
           </Flex>
 
-          <Dialog.Description className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-            Are you sure you want to permanently delete this user account? This action cannot be undone.
+          <Dialog.Description mb={"5"} className="text-xs text-slate-500 dark:text-slate-400">
+            Are you sure you want to log out
+            of your account?
           </Dialog.Description>
 
-          <Box className="p-3 mb-4 rounded-xl bg-slate-200/50 dark:bg-slate-800/50 border border-[var(--gray-a3)] space-y-1">
-            <Text size="1" color="gray" className="block">
-              <strong>Name:</strong> {watchFields.fullName || "N/A"}
-            </Text>
-            <Text size="1" color="gray" className="block">
-              <strong>Email:</strong> {watchFields.email || "N/A"}
-            </Text>
-            <Text size="1" color="gray" className="block">
-              <strong>Phone:</strong> {watchFields.phone || "N/A"}
-            </Text>
-          </Box>
-
-          <Flex justify="end" gap="2">
+          <Flex
+            justify="end"
+            gap="2"
+          >
             <Button
               variant="soft"
               color="gray"
               size="2"
-              onClick={() => setConfirmDelete(false)}
+              onClick={() =>
+                setConfirmLogout(
+                  false
+                )
+              }
+              disabled={
+                logoutLoading
+              }
               className="cursor-pointer"
             >
               Cancel
             </Button>
+
             <Button
               color="red"
               variant="solid"
               size="2"
-              onClick={handleConfirmDelete}
+              onClick={
+                handleLogout
+              }
+              disabled={
+                logoutLoading
+              }
+              className="cursor-pointer"
+            >
+              <LogOut className="w-4 h-4 mr-1" />
+
+              {logoutLoading
+                ? "Logging out..."
+                : "Logout"}
+            </Button>
+          </Flex>
+        </Dialog.Content>
+      </Dialog.Root>
+
+      {/* ========================================================
+          DELETE CONFIRMATION
+      ========================================================= */}
+
+      <Dialog.Root
+        open={confirmDelete}
+        onOpenChange={
+          setConfirmDelete
+        }
+      >
+        <Dialog.Content maxWidth={"450px"} className="max-w-sm p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-[var(--gray-a4)] shadow-2xl">
+          <Flex
+            align="center"
+            gap="2"
+            className="mb-2 text-rose-500"
+          >
+            <AlertTriangle className="w-5 h-5 mb-4" />
+
+            <Dialog.Title className="text-base font-bold">
+              Confirm Account Deletion
+            </Dialog.Title>
+          </Flex>
+
+          <Dialog.Description mb={"4"} className="text-xs text-slate-500 dark:text-slate-400">
+            Are you sure you want to permanently
+            delete this user account? This action
+            cannot be undone.
+          </Dialog.Description>
+
+          <Box className="p-3 mb-4 rounded-xl bg-slate-200/50 dark:bg-slate-800/50 border border-[var(--gray-a3)] space-y-1">
+            <Text
+              size="1"
+              color="gray"
+              className="block"
+            >
+              <strong>Name:</strong>{" "}
+              {watchFields.fullName ||
+                "N/A"}
+            </Text>
+
+            <Text
+              size="1"
+              color="gray"
+              className="block"
+            >
+              <strong>Email:</strong>{" "}
+              {watchFields.email ||
+                "N/A"}
+            </Text>
+
+            <Text
+              size="1"
+              color="gray"
+              className="block"
+            >
+              <strong>Phone:</strong>{" "}
+              {watchFields.phone ||
+                "N/A"}
+            </Text>
+          </Box>
+
+          <Flex
+            justify="end"
+            gap="2"
+          >
+            <Button
+              variant="soft"
+              color="gray"
+              size="2"
+              onClick={() =>
+                setConfirmDelete(
+                  false
+                )
+              }
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+
+            <Button
+              color="red"
+              variant="solid"
+              size="2"
+              onClick={
+                handleConfirmDelete
+              }
               className="cursor-pointer"
             >
               Confirm Delete
@@ -419,4 +1037,6 @@ const ProfileDialog: React.FC = () => {
   );
 };
 
-export default React.memo(ProfileDialog);
+export default React.memo(
+  ProfileDialog
+);

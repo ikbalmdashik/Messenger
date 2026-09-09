@@ -24,16 +24,12 @@ const useCurrentUser = (userId: number | null): User => {
 
         const fetchUserById = async () => {
             try {
-                console.log("Fetching user:", userId);
-
                 const response = await axios.get(
                     API_ENDPOINTS.GetUserById + Number(userId),
                     {
                         withCredentials: true,
                     }
                 );
-
-                console.log("Current user response:", response.data);
 
                 if (response.data) {
                     setUser(response.data);

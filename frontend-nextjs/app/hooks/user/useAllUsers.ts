@@ -24,12 +24,10 @@ const useAllUsers = (): User[] => {
           }
         );
 
-        console.log("GetAllUsers response:", response.data);
-
         if (Array.isArray(response.data)) {
           setAllUsers(response.data);
         } else {
-          console.error(
+          console.log(
             "GetAllUsers response is not an array:",
             response.data
           );
@@ -37,7 +35,7 @@ const useAllUsers = (): User[] => {
           setAllUsers([]);
         }
       } catch (error) {
-        console.error("Failed to fetch all users:", error);
+        console.log("Failed to fetch all users:", error);
         setAllUsers([]);
       }
     };

@@ -8,6 +8,7 @@ const API_ENDPOINTS = {
     IsEmailExist: defaultURL + "/auth/isEmailExist",
     ValidateUser: defaultURL + "/auth/validateUser",
     Login: defaultURL + "/auth/login",
+    Logout: defaultURL + "/auth/logout",
     SendPasswordResetLink: defaultURL + "/auth/sendPasswordResetLink",
     SendEmailVerificationLink: defaultURL + "/auth/sendEmailVerifyLink",
     ValidateLink: defaultURL + "/auth/validateLink",

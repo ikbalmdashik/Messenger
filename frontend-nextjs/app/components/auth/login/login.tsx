@@ -160,6 +160,40 @@ const MultiStepLogin = () => {
         ];
     }, [email, getValues]);
 
+
+    useEffect(() => {
+        let mounted = true;
+
+        const checkAuthentication = async () => {
+            try {
+                const response = await axios.post(
+                    API_ENDPOINTS.GetUserByToken,
+                    {},
+                    {
+                        withCredentials: true,
+                    }
+                );
+
+                if (!mounted) return;
+
+                // Valid cookie + valid JWT
+                if (response.data?.userId) {
+                    router.replace(Routes.Chat);
+                }
+            } catch (error) {
+                // No valid cookie / expired JWT
+                // Stay on login page
+                console.log("User is not authenticated");
+            }
+        };
+
+        checkAuthentication();
+
+        return () => {
+            mounted = false;
+        };
+    }, [router]);
+
     /*
      * Resend cooldown timer
      */
