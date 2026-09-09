@@ -1,74 +1,147 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
+
 import axios from "axios";
 
 import ChatSidebar from "./sidebar/sidebar";
 import Middlebar from "./middlebar/middlebar";
 import Rightbar from "../rightbar/rightbar";
+
 import API_ENDPOINTS from "@/app/routes/api";
+
 import FullScreenSpinner from "../spinner";
-import { Button } from "@radix-ui/themes";
-import { useRouter } from "next/navigation";
+
+import {
+  Button,
+} from "@radix-ui/themes";
+
+import {
+  useRouter,
+} from "next/navigation";
+
 import Routes from "@/app/routes/routes";
-// import Unauthorized from "../unauthorized/unauthorized";
 
 const ChatComponent = () => {
-  // =====================================================
-  // AUTHENTICATION STATE
-  // =====================================================
+  /* ==============================
+     AUTHENTICATION
+  ============================== */
 
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [
+    isCheckingAuth,
+    setIsCheckingAuth,
+  ] = useState(true);
 
-  // =====================================================
-  // CHAT STATE
-  // =====================================================
+  const [
+    isAuthenticated,
+    setIsAuthenticated,
+  ] = useState(false);
 
-  const [receiverId, setReceiverId] = useState<number | null>(null);
-  const [showChatMobile, setShowChatMobile] = useState(false);
+  const [
+    senderId,
+    setSenderId,
+  ] = useState<number | null>(null);
 
-  const [showMobileProfile, setShowMobileProfile] = useState(false);
+  /* ==============================
+     CHAT
+  ============================== */
 
-  const [dragging, setDragging] = useState<"left" | "right" | null>(null);
+  const [
+    receiverId,
+    setReceiverId,
+  ] = useState<number | null>(null);
 
-  const [sidebarWidth, setSidebarWidth] = useState(25);
-  const [middleWidth, setMiddleWidth] = useState(50);
-  const [rightWidth, setRightWidth] = useState(25);
+  /* ==============================
+     MOBILE
+  ============================== */
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const isDragging = useRef(false);
+  const [
+    showChatMobile,
+    setShowChatMobile,
+  ] = useState(false);
 
-  const [leftWidth, setLeftWidth] = useState(33);
+  const [
+    showMobileProfile,
+    setShowMobileProfile,
+  ] = useState(false);
 
-  const router = useRouter()
+  /* ==============================
+     DESKTOP PANEL RESIZING
+  ============================== */
 
-  // =====================================================
-  // CHECK AUTHENTICATION
-  // =====================================================
+  const [
+    dragging,
+    setDragging,
+  ] = useState<
+    "left" | "right" | null
+  >(null);
+
+  const [
+    sidebarWidth,
+    setSidebarWidth,
+  ] = useState(25);
+
+  const [
+    middleWidth,
+    setMiddleWidth,
+  ] = useState(50);
+
+  const [
+    rightWidth,
+    setRightWidth,
+  ] = useState(25);
+
+  const router = useRouter();
+
+  /* ==============================
+     GET CURRENT USER
+  ============================== */
 
   useEffect(() => {
     const getUserData = async () => {
       try {
         setIsCheckingAuth(true);
 
-        const response = await axios.post(
-          API_ENDPOINTS.GetUserByToken,
-          {},
-          {
-            withCredentials: true,
-          }
+        const response =
+          await axios.post(
+            API_ENDPOINTS.GetUserByToken,
+            {},
+            {
+              withCredentials: true,
+            }
+          );
+
+        console.log(
+          "Authenticated user:",
+          response.data
         );
 
-        // API returned successfully
-        if (response.data) {
+        const user =
+          response.data;
+
+        if (
+          user?.userId !== undefined &&
+          user?.userId !== null
+        ) {
+          setSenderId(
+            Number(user.userId)
+          );
+
           setIsAuthenticated(true);
         } else {
+          setSenderId(null);
           setIsAuthenticated(false);
         }
       } catch (error) {
-        console.log("Authentication failed:", error);
+        console.error(
+          "Authentication failed:",
+          error
+        );
 
+        setSenderId(null);
         setIsAuthenticated(false);
       } finally {
         setIsCheckingAuth(false);
@@ -78,110 +151,155 @@ const ChatComponent = () => {
     getUserData();
   }, []);
 
-  // =====================================================
-  // RESIZABLE LAYOUT
-  // =====================================================
-
-  const startDrag = () => {
-    isDragging.current = true;
-  };
-
-  const stopDrag = () => {
-    isDragging.current = false;
-  };
-
-  const onDrag = (e: MouseEvent) => {
-    if (!isDragging.current || !containerRef.current) return;
-
-    const total = containerRef.current.offsetWidth;
-    const newLeft = (e.clientX / total) * 100;
-
-    if (newLeft < 20 || newLeft > 60) return;
-
-    setLeftWidth(newLeft);
-    setMiddleWidth(100 - newLeft);
-  };
+  /* ==============================
+     RESIZE PANELS
+  ============================== */
 
   useEffect(() => {
-    const handleMove = (e: MouseEvent) => {
+    const handleMove = (
+      event: MouseEvent
+    ) => {
       if (!dragging) return;
 
-      const total = window.innerWidth;
-      const percent = (e.clientX / total) * 100;
+      const totalWidth =
+        window.innerWidth;
 
-      if (dragging === "left") {
-        const newSidebar = Math.min(Math.max(percent, 20), 60);
-        const remaining = 100 - newSidebar;
+      const percent =
+        (event.clientX /
+          totalWidth) *
+        100;
 
-        setSidebarWidth(newSidebar);
-        setMiddleWidth(remaining - rightWidth);
+      if (
+        dragging === "left"
+      ) {
+        const newSidebar =
+          Math.min(
+            Math.max(
+              percent,
+              20
+            ),
+            60
+          );
+
+        const remaining =
+          100 - newSidebar;
+
+        setSidebarWidth(
+          newSidebar
+        );
+
+        setMiddleWidth(
+          Math.max(
+            remaining -
+              rightWidth,
+            20
+          )
+        );
       }
 
-      if (dragging === "right") {
-        const newRight = Math.min(Math.max(100 - percent, 20), 60);
-        const remaining = 100 - newRight;
+      if (
+        dragging === "right"
+      ) {
+        const newRight =
+          Math.min(
+            Math.max(
+              100 - percent,
+              20
+            ),
+            60
+          );
 
-        setRightWidth(newRight);
-        setMiddleWidth(remaining - sidebarWidth);
+        const remaining =
+          100 - newRight;
+
+        setRightWidth(
+          newRight
+        );
+
+        setMiddleWidth(
+          Math.max(
+            remaining -
+              sidebarWidth,
+            20
+          )
+        );
       }
     };
 
-    const stop = () => setDragging(null);
+    const handleStop = () => {
+      setDragging(null);
+    };
 
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", stop);
+    window.addEventListener(
+      "mousemove",
+      handleMove
+    );
+
+    window.addEventListener(
+      "mouseup",
+      handleStop
+    );
 
     return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", stop);
+      window.removeEventListener(
+        "mousemove",
+        handleMove
+      );
+
+      window.removeEventListener(
+        "mouseup",
+        handleStop
+      );
     };
-  }, [dragging, sidebarWidth, rightWidth]);
+  }, [
+    dragging,
+    sidebarWidth,
+    rightWidth,
+  ]);
 
-  // =====================================================
-  // SELECT CHAT
-  // =====================================================
+  /* ==============================
+     SELECT USER
+  ============================== */
 
-  const handleSelect = (_: number | null, rid: number | null) => {
+  const handleSelect = (
+    rid: number
+  ) => {
     setReceiverId(rid);
+
     setShowChatMobile(true);
 
     setShowMobileProfile(false);
   };
 
-  // =====================================================
-  // OPEN MOBILE PROFILE
-  // =====================================================
+  /* ==============================
+     MOBILE PROFILE
+  ============================== */
 
-  const handleOpenMobileProfile = () => {
-    if (receiverId !== null) {
-      setShowMobileProfile(true);
-    }
-  };
+  const handleOpenMobileProfile =
+    () => {
+      if (receiverId !== null) {
+        setShowMobileProfile(
+          true
+        );
+      }
+    };
 
-  // =====================================================
-  // SENDER ID
-  // =====================================================
-
-  const senderId =
-    typeof window !== "undefined"
-      ? Number(sessionStorage.getItem("loginId"))
-      : null;
-
-  // =====================================================
-  // AUTH CHECK LOADING
-  // =====================================================
+  /* ==============================
+     AUTH LOADING
+  ============================== */
 
   if (isCheckingAuth) {
-    return (
-      <FullScreenSpinner />
-    );
+    return <FullScreenSpinner />;
   }
 
-  // =====================================================
-  // NOT AUTHENTICATED
-  // =====================================================
+  /* ==============================
+     AUTH FAILED
+  ============================== */
 
-  if (!isAuthenticated) {
+  if (
+    !isAuthenticated ||
+    senderId === null
+  ) {
     return (
       <div className="h-[100dvh] flex items-center justify-center">
         <div className="text-center">
@@ -190,116 +308,118 @@ const ChatComponent = () => {
           </h2>
 
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            Please log in to access the chat.
+            Please log in to access
+            the chat.
           </p>
+
           <Button
-            mt={"2"}
-            style={{ width: "100%" }}
+            mt="2"
+            style={{
+              width: "100%",
+            }}
             className="text-xl"
-            onClick={() => { router.push(Routes.Login) }}
-          >Log In</Button>
+            onClick={() => {
+              router.push(
+                Routes.Login
+              );
+            }}
+          >
+            Log In
+          </Button>
         </div>
       </div>
     );
-
-    // Or:
-    // return <Unauthorized />;
   }
 
-  // =====================================================
-  // AUTHENTICATED → SHOW CHAT
-  // =====================================================
+  /* ==============================
+     CHAT
+  ============================== */
 
   return (
     <div className="h-[100dvh] overflow-hidden transition-colors">
-      {/* =====================================================
-          MOBILE VIEW
-      ===================================================== */}
-      <div className="md:hidden h-full">
+
+      {/* =================================
+          MOBILE
+      ================================= */}
+
+      <div className="md:hidden h-full relative">
 
         {!showChatMobile && (
-          <ChatSidebar onSelect={handleSelect} />
-        )}
-
-        {showChatMobile && (
-          <Middlebar
+          <ChatSidebar
             senderId={senderId}
-            receiverId={receiverId}
-            onBack={() => {
-              setShowChatMobile(false);
-              setShowMobileProfile(false);
-            }}
-            onOpenProfile={handleOpenMobileProfile}
+            onSelect={handleSelect}
           />
         )}
 
-        {/* Mobile User Info */}
-        <div className="md:hidden h-full relative">
-
-          {/* Contact list */}
-          {!showChatMobile && (
-            <ChatSidebar
-              onSelect={handleSelect}
-            />
-          )}
-
-          {/* Chat */}
-          {showChatMobile && !showMobileProfile && (
+        {showChatMobile &&
+          !showMobileProfile && (
             <Middlebar
               senderId={senderId}
               receiverId={receiverId}
               onBack={() => {
-                setShowChatMobile(false);
-                setShowMobileProfile(false);
+                setShowChatMobile(
+                  false
+                );
+
+                setShowMobileProfile(
+                  false
+                );
               }}
-              onOpenProfile={() => {
-                setShowMobileProfile(true);
-              }}
+              onOpenProfile={
+                handleOpenMobileProfile
+              }
             />
           )}
 
-          {/* User information */}
-          {showChatMobile && showMobileProfile && (
+        {showChatMobile &&
+          showMobileProfile && (
             <Rightbar
               receiverId={receiverId}
               onBack={() => {
-                setShowMobileProfile(false);
+                setShowMobileProfile(
+                  false
+                );
               }}
             />
           )}
-
-        </div>
       </div>
 
-      {/* =====================================================
-          DESKTOP VIEW
-      ===================================================== */}
+      {/* =================================
+          DESKTOP
+      ================================= */}
+
       <div className="hidden md:flex h-[100dvh] w-full overflow-hidden">
 
-        {/* Sidebar */}
+        {/* SIDEBAR */}
+
         <div
           className="h-full min-h-0 flex flex-col border-r"
-          style={{ width: `${sidebarWidth}%` }}
+          style={{
+            width: `${sidebarWidth}%`,
+          }}
         >
-          <ChatSidebar onSelect={handleSelect} />
+          <ChatSidebar
+            senderId={senderId}
+            onSelect={handleSelect}
+          />
         </div>
 
-        {/* Resizer 1 */}
+        {/* LEFT RESIZER */}
+
         <div
-          onMouseDown={() => setDragging("left")}
-          className="
-            w-1
-            cursor-col-resize
-            bg-white/10
-            transition
-            hover:bg-blue-500
-          "
+          onMouseDown={() => {
+            setDragging("left");
+          }}
+          className="w-1 cursor-col-resize bg-white/10 transition hover:bg-blue-500"
         />
 
-        {/* Middle */}
+        {/* MIDDLEBAR */}
+
         <div
           className="h-full min-h-0 flex flex-col"
-          style={{ width: `${middleWidth}%` }}
+          style={{
+            width: `${middleWidth}%`,
+          }}
         >
           <Middlebar
             senderId={senderId}
@@ -307,29 +427,32 @@ const ChatComponent = () => {
           />
         </div>
 
-        {/* Resizer 2 */}
+        {/* RIGHT RESIZER */}
+
         <div
-          onMouseDown={() => setDragging("right")}
-          className="
-            w-1
-            cursor-col-resize
-            bg-white/10
-            transition
-            hover:bg-blue-500
-          "
+          onMouseDown={() => {
+            setDragging("right");
+          }}
+          className="w-1 cursor-col-resize bg-white/10 transition hover:bg-blue-500"
         />
 
-        {/* Rightbar */}
+        {/* RIGHTBAR */}
+
         <div
           className="h-full min-h-0 flex flex-col border-l"
-          style={{ width: `${rightWidth}%` }}
+          style={{
+            width: `${rightWidth}%`,
+          }}
         >
           <Rightbar
             receiverId={receiverId}
-            onBack={() => setShowMobileProfile(false)}
+            onBack={() => {
+              setShowMobileProfile(
+                false
+              );
+            }}
           />
         </div>
-
       </div>
     </div>
   );

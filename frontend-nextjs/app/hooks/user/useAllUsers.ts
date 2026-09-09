@@ -3,35 +3,49 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 
 export interface User {
-    userId: number | null;
-    fullName: string | null;
-    phone: string | null;
-    email: string | null;
-    role: string | null;
-    isEmailVerified: boolean | null;
+  userId: number | null;
+  fullName: string | null;
+  phone: string | null;
+  email: string | null;
+  role: string | null;
+  isEmailVerified: boolean | null;
 }
 
-const useAllUsers = () => {
-    const [allUsers, setAllUsers] = useState<User[]>([]);
-    // fetch currently login data
-    useEffect(() => {
-        const userId = sessionStorage.getItem("loginId");
+const useAllUsers = (): User[] => {
+  const [allUsers, setAllUsers] = useState<User[]>([]);
 
-        const FetchDataById = async () => {
-            try {
-                const response = await axios.get(API_ENDPOINTS.GetAllUsers);
-                setAllUsers(response.data);
-            } catch (error) {
-                console.log(error);
-            }
+  useEffect(() => {
+    const fetchAllUsers = async () => {
+      try {
+        const response = await axios.get(
+          API_ENDPOINTS.GetAllUsers,
+          {
+            withCredentials: true,
+          }
+        );
+
+        console.log("GetAllUsers response:", response.data);
+
+        if (Array.isArray(response.data)) {
+          setAllUsers(response.data);
+        } else {
+          console.error(
+            "GetAllUsers response is not an array:",
+            response.data
+          );
+
+          setAllUsers([]);
         }
+      } catch (error) {
+        console.error("Failed to fetch all users:", error);
+        setAllUsers([]);
+      }
+    };
 
-        if(userId != null) {
-            FetchDataById();
-        }
-    }, []);
+    fetchAllUsers();
+  }, []);
 
-    return allUsers ;
-}
+  return allUsers;
+};
 
 export default useAllUsers;

@@ -3,11 +3,11 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 
 export interface Chat {
-    chatId: number | null,
-    senderId: number | null,
-    receiverId: number | null,
-    message: string | null,
-    status: string | null,
+    chatId: number | null;
+    senderId: number | null;
+    receiverId: number | null;
+    message: string | null;
+    status: string | null;
     createdAt: string | null;
 }
 
@@ -17,34 +17,61 @@ export const initialChat: Chat = {
     receiverId: null,
     message: null,
     status: null,
-    createdAt: null
-}
+    createdAt: null,
+};
 
-const useChats = (senderId: number, receiverId: number) => {
+const useChats = (
+    senderId: number | null,
+    receiverId: number | null
+) => {
     const [chats, setChats] = useState<Chat[]>([]);
 
-    // fetch currently login data
     useEffect(() => {
-        const userId = sessionStorage.getItem("loginId");
+        // Don't call API until both users are available
+        if (senderId === null || receiverId === null) {
+            setChats([]);
+            return;
+        }
 
-        const FetchChatsById = async (sId: number, rId: number) => {
+        const fetchChatsById = async () => {
             try {
-                const response = await axios.post(API_ENDPOINTS.GetChats, {
-                    senderId: sId,
-                    receiverId: rId
+                console.log("Fetching chats:", {
+                    senderId,
+                    receiverId,
                 });
-                setChats(response.data);
-            } catch (error) {
-                console.log(error);
-            }
-        }
 
-        if(userId != null) {
-            FetchChatsById(senderId, receiverId);
-        }
+                const response = await axios.post(
+                    API_ENDPOINTS.GetChats,
+                    {
+                        senderId: Number(senderId),
+                        receiverId: Number(receiverId),
+                    },
+                    {
+                        withCredentials: true,
+                    }
+                );
+
+                console.log("Chats response:", response.data);
+
+                if (Array.isArray(response.data)) {
+                    setChats(response.data);
+                } else {
+                    console.error(
+                        "GetChats response is not an array:",
+                        response.data
+                    );
+                    setChats([]);
+                }
+            } catch (error) {
+                console.error("Failed to fetch chats:", error);
+                setChats([]);
+            }
+        };
+
+        fetchChatsById();
     }, [senderId, receiverId]);
 
-    return chats ;
-}
+    return chats;
+};
 
 export default useChats;

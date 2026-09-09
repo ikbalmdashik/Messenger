@@ -10,28 +10,46 @@ export const initialUser: User = {
     email: null,
     role: null,
     isEmailVerified: null,
-}
+};
 
 const useCurrentUser = (userId: number | null): User => {
     const [user, setUser] = useState<User>(initialUser);
-    
-    // fetch currently login data
+
     useEffect(() => {
-        const FetchDataById = async (id: number) => {
-            try {
-                const response = await axios.get(API_ENDPOINTS.GetUserById + id);
-                setUser(response.data);
-            } catch (error) {
-                console.log(error);
-            }
+        // No user selected
+        if (userId === null) {
+            setUser(initialUser);
+            return;
         }
 
-        if(userId != null) {
-            FetchDataById(+userId);
-        }
+        const fetchUserById = async () => {
+            try {
+                console.log("Fetching user:", userId);
+
+                const response = await axios.get(
+                    API_ENDPOINTS.GetUserById + Number(userId),
+                    {
+                        withCredentials: true,
+                    }
+                );
+
+                console.log("Current user response:", response.data);
+
+                if (response.data) {
+                    setUser(response.data);
+                } else {
+                    setUser(initialUser);
+                }
+            } catch (error) {
+                console.error("Failed to fetch user:", error);
+                setUser(initialUser);
+            }
+        };
+
+        fetchUserById();
     }, [userId]);
 
-    return user ;
-}
+    return user;
+};
 
 export default useCurrentUser;
