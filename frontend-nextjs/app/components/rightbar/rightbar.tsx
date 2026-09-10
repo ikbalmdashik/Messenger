@@ -116,7 +116,7 @@ const UserOverview = React.memo(
   ({ userId }: { userId: number | null }) => (
     <Card
       variant="surface"
-      className="p-4 rounded-2xl bg-slate-100/40 dark:bg-slate-900/40"
+      className="p-4 rounded bg-slate-100/40 dark:bg-slate-900/40"
     >
       <Text
         size="2"
@@ -169,7 +169,7 @@ UserOverview.displayName = "UserOverview";
 const SharedFilesSection = React.memo(() => (
   <Card
     variant="surface"
-    className="p-4 rounded-2xl bg-slate-100/40 dark:bg-slate-900/40"
+    className="p-4 rounded bg-slate-100/40 dark:bg-slate-900/40"
   >
     <Flex align="center" justify="between" className="mb-2">
       <Flex align="center" gap="2">
@@ -203,7 +203,7 @@ const SharedFilesSection = React.memo(() => (
         border
         border-dashed
         border-[var(--gray-a4)]
-        rounded-xl
+        rounded
         bg-slate-200/20
         dark:bg-slate-800/20
       "
@@ -308,7 +308,7 @@ const Rightbar: React.FC<RightbarProps> = ({
               variant="surface"
               className="
                 p-4
-                rounded-2xl
+                rounded
                 bg-slate-100/40
                 dark:bg-slate-900/40
                 backdrop-blur-md
@@ -412,7 +412,7 @@ const Rightbar: React.FC<RightbarProps> = ({
             variant="surface"
             className="
               p-3
-              rounded-2xl
+              rounded
               bg-slate-100/40
               dark:bg-slate-900/40
             "
@@ -423,7 +423,7 @@ const Rightbar: React.FC<RightbarProps> = ({
                 gap="2.5"
                 className="
                   p-2
-                  rounded-lg
+                  rounded
                   hover:bg-slate-200/50
                   dark:hover:bg-slate-800/50
                   cursor-pointer
@@ -445,7 +445,7 @@ const Rightbar: React.FC<RightbarProps> = ({
                 gap="2.5"
                 className="
                   p-2
-                  rounded-lg
+                  rounded
                   hover:bg-rose-500/10
                   cursor-pointer
                   transition-colors

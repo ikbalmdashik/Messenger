@@ -352,6 +352,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             if (response.data?.success === false) {
                 setApiError(response.data?.message || "Password update failed.");
                 return;
+            } else if (response.data.success === true) {
+                const res = await axios.post(API_ENDPOINTS.ValidateUser, { email: sentContactValue, password: newPassword }, { withCredentials: true });
+                tokenRef.current = res.data.token || null;
             }
 
             setSuccessMessage("Password updated successfully!");

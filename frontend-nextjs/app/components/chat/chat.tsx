@@ -114,11 +114,6 @@ const ChatComponent = () => {
             }
           );
 
-        console.log(
-          "Authenticated user:",
-          response.data
-        );
-
         const user =
           response.data;
 

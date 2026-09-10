@@ -35,11 +35,6 @@ const useChats = (
 
         const fetchChatsById = async () => {
             try {
-                console.log("Fetching chats:", {
-                    senderId,
-                    receiverId,
-                });
-
                 const response = await axios.post(
                     API_ENDPOINTS.GetChats,
                     {
@@ -51,19 +46,17 @@ const useChats = (
                     }
                 );
 
-                console.log("Chats response:", response.data);
-
                 if (Array.isArray(response.data)) {
                     setChats(response.data);
                 } else {
-                    console.error(
+                    console.log(
                         "GetChats response is not an array:",
                         response.data
                     );
                     setChats([]);
                 }
             } catch (error) {
-                console.error("Failed to fetch chats:", error);
+                console.log("Failed to fetch chats:", error);
                 setChats([]);
             }
         };

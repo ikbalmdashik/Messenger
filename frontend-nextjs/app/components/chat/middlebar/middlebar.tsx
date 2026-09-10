@@ -176,7 +176,7 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
 
             <Box>
               <Flex align="center" gap="1.5">
-                <Text size="3" weight="bold" className="text-slate-800 dark:text-slate-100">
+                <Text size="3" mr={"2"} weight="bold" className="text-slate-800 dark:text-slate-100">
                   {receiver?.fullName}
                 </Text>
                 {receiver?.isEmailVerified ? (
@@ -268,7 +268,7 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
       </div>
 
       {/* 3. Input Footer Section (Fixed Height) */}
-      <Box p="3" className="shrink-0 border-t border-[var(--gray-a4)]">
+      <Box p="3" className="shrink-0 border-[var(--gray-a4)]">
         <Flex
           align="center"
           gap="2"

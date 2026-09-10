@@ -11,6 +11,45 @@ import {
 
 export class Auth { }
 
+// @Entity("users")
+// export class UsersEntity {
+//   @PrimaryGeneratedColumn()
+//   userId: number;
+
+//   @Column()
+//   fullName: string;
+
+//   @Column()
+//   phone: string;
+
+//   @Column()
+//   email: string;
+
+//   @Column()
+//   password: string;
+
+//   @Column()
+//   role: string;
+
+//   @Column({ default: false })
+//   isEmailVerified: boolean;
+
+//   // Messages sent by the user
+//   @OneToMany(() => ChatMessageEntity, chat => chat.sender)
+//   @JoinColumn({ name: "sendMessages" })
+//   sentMessages: ChatMessageEntity[];
+
+//   // Messages received by the user
+//   @OneToMany(() => ChatMessageEntity, chat => chat.receiver)
+//   @JoinColumn({ name: "receiveMessages" })
+//   receivedMessages: ChatMessageEntity[];
+
+//   @OneToMany(() => UserSessionEntity, (session) => session.user)
+//   sessions: UserSessionEntity[];
+// }
+
+
+
 @Entity("users")
 export class UsersEntity {
   @PrimaryGeneratedColumn()
@@ -35,13 +74,11 @@ export class UsersEntity {
   isEmailVerified: boolean;
 
   // Messages sent by the user
-  @OneToMany(() => ChatMessageEntity, chat => chat.sender)
-  @JoinColumn({ name: "sendMessages" })
+  @OneToMany(() => ChatMessageEntity, (chat) => chat.sender)
   sentMessages: ChatMessageEntity[];
 
   // Messages received by the user
-  @OneToMany(() => ChatMessageEntity, chat => chat.receiver)
-  @JoinColumn({ name: "receiveMessages" })
+  @OneToMany(() => ChatMessageEntity, (chat) => chat.receiver)
   receivedMessages: ChatMessageEntity[];
 
   @OneToMany(() => UserSessionEntity, (session) => session.user)

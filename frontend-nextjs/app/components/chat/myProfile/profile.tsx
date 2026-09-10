@@ -351,11 +351,6 @@ const ProfileDialog: React.FC = () => {
         role: watchFields.role,
       };
 
-      console.log(
-        "Updating profile:",
-        updatedData
-      );
-
       await axios.post(
         API_ENDPOINTS.UpdateUser,
         updatedData,
@@ -543,10 +538,11 @@ const ProfileDialog: React.FC = () => {
               <IconButton
                 variant="ghost"
                 color="gray"
-                size="1"
+                size="3"
+                mb={"9"}
                 className="cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </IconButton>
             </Dialog.Close>
           </Flex>

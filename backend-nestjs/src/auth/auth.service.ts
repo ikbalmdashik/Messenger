@@ -530,17 +530,16 @@ export class AuthService {
   }
 
   async DeleteUser(id: number) {
-    // 1. Ensure userId is provided
     if (!id) {
       throw new BadRequestException("User ID is required");
     }
 
-    // 2. Fetch the existing user
     const user = await this.GetDataById(id);
     if (!user) {
       throw new NotFoundException("User not found");
     }
 
-    return await this.userRepository.delete(user);
+    // Pass 'id' directly instead of the full 'user' object
+    return await this.userRepository.delete(id);
   }
 }

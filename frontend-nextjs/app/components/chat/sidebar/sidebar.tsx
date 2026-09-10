@@ -112,21 +112,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     onSelect(receiverId);
   };
 
-  console.log(
-    "Sidebar senderId:",
-    senderId
-  );
-
-  console.log(
-    "Sidebar allUsers:",
-    allUsers
-  );
-
-  console.log(
-    "Sidebar filteredUsers:",
-    filteredUsers
-  );
-
   return (
     <Flex
       direction="column"
@@ -249,7 +234,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                           numericUserId
                         )
                       }
-                      className={`mb-1 cursor-pointer rounded-xl p-3 transition ${
+                      className={`mb-1 cursor-pointer rounded p-3 m-2 transition ${
                         isSelected
                           ? "bg-blue-500/10 dark:bg-blue-500/20"
                           : "hover:bg-gray-100 dark:hover:bg-white/5"
@@ -374,7 +359,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
           FOOTER
       ============================== */}
 
-      <Box className="border-t border-gray-200 dark:border-white/10 p-3">
+      {/* <Box className="border-t border-gray-200 dark:border-white/10 p-3">
         <Button
           variant="soft"
           className="w-full cursor-pointer"
@@ -385,7 +370,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
           <Plus size={16} />
           New Chat
         </Button>
-      </Box>
+      </Box> */}
     </Flex>
   );
 };
