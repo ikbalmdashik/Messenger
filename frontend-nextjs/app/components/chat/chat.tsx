@@ -10,7 +10,7 @@ import axios from "axios";
 
 import ChatSidebar from "./sidebar/sidebar";
 import Middlebar from "./middlebar/middlebar";
-import Rightbar from "../rightbar/rightbar";
+import Rightbar from "./rightbar/rightbar";
 
 import API_ENDPOINTS from "@/app/routes/api";
 

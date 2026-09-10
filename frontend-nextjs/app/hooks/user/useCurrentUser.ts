@@ -8,6 +8,7 @@ export const initialUser: User = {
     fullName: null,
     phone: null,
     email: null,
+    publicId: null,
     role: null,
     isEmailVerified: null,
 };

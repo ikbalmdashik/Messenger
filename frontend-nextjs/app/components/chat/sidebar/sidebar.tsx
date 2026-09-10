@@ -298,7 +298,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                               size="1"
                               className="block truncate text-gray-500 dark:text-gray-400"
                             >
-                              {user.email ||
+                              {user.publicId ||
                                 ""}
                             </Text>
                           </Box>

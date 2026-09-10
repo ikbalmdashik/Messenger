@@ -113,7 +113,7 @@ ActionButtons.displayName = "ActionButtons";
 
 // User Overview
 const UserOverview = React.memo(
-  ({ userId }: { userId: number | null }) => (
+  ({ publicId }: { publicId: string | null }) => (
     <Card
       variant="surface"
       className="p-4 rounded bg-slate-100/40 dark:bg-slate-900/40"
@@ -137,7 +137,7 @@ const UserOverview = React.memo(
             weight="medium"
             className="font-mono text-slate-700 dark:text-slate-300"
           >
-            #{userId}
+            @{publicId}
           </Text>
         </Flex>
 
@@ -370,7 +370,7 @@ const Rightbar: React.FC<RightbarProps> = ({
                   color="gray"
                   className="truncate max-w-[220px] mb-2"
                 >
-                  {user.email}
+                  {user.publicId}
                 </Text>
 
                 <Flex gap="2" align="center" className="mt-1">
@@ -384,14 +384,14 @@ const Rightbar: React.FC<RightbarProps> = ({
                       : "Unverified"}
                   </Badge>
 
-                  {user.role && (
+                  {user.publicId && (
                     <Badge
                       color="sky"
                       variant="surface"
                       size="1"
                       className="capitalize"
                     >
-                      {user.role}
+                      {user.publicId}
                     </Badge>
                   )}
                 </Flex>
@@ -403,7 +403,7 @@ const Rightbar: React.FC<RightbarProps> = ({
             </Card>
           </motion.div>
 
-          <UserOverview userId={user.userId} />
+          <UserOverview publicId={user.publicId} />
 
           <SharedFilesSection />
 

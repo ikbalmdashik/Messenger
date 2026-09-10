@@ -7,6 +7,7 @@ export interface User {
   fullName: string | null;
   phone: string | null;
   email: string | null;
+  publicId: string | null;
   role: string | null;
   isEmailVerified: boolean | null;
 }

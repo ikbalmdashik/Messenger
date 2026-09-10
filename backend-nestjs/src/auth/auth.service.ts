@@ -57,6 +57,7 @@ export class AuthService {
         const hashedPassword = await this.HashPassword(createUserDto.password);
         user.fullName = createUserDto.fullName;
         user.email = createUserDto.email;
+        user.publicId = user.email.split('@')[0],
         user.phone = createUserDto.phone;
         user.password = hashedPassword;
         user.role = createUserDto.role;
@@ -475,6 +476,7 @@ export class AuthService {
         'user.fullName',
         'user.phone',
         'user.email',
+        'user.publicId',
         'user.role',
         'user.isEmailVerified'
       ])
@@ -492,6 +494,7 @@ export class AuthService {
         'user.fullName',
         'user.phone',
         'user.email',
+        'user.publicId',
         'user.role',
       ])
       .getMany();

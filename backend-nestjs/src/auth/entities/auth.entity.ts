@@ -7,7 +7,9 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   Index, ManyToOne,
-  UpdateDateColumn } from "typeorm";
+  UpdateDateColumn,
+  BeforeInsert
+} from "typeorm";
 
 export class Auth { }
 
@@ -27,6 +29,10 @@ export class UsersEntity {
 
   @Column()
   password: string;
+
+  @Column({ unique: true, nullable: true })
+  @Index()
+  publicId: string;
 
   @Column()
   role: string;

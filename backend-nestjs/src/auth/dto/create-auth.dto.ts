@@ -5,6 +5,7 @@ export class CreateUserDto {
     fullName: string;
     phone: string;
     email: string;
+    publicId: string;
     password: string;
     role: string;
     isEmailVerified: boolean

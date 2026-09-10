@@ -16,6 +16,7 @@ import {
   Avatar,
   Badge,
   IconButton,
+  Tooltip
 } from "@radix-ui/themes";
 
 import {
@@ -180,14 +181,22 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
                   {receiver?.fullName}
                 </Text>
                 {receiver?.isEmailVerified ? (
-                  <BadgeCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <Tooltip content="This user is verified.">
+                    <span className="inline-flex items-center">
+                      <BadgeCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                    </span>
+                  </Tooltip>
                 ) : (
-                  <BadgeAlert className="w-4 h-4 text-rose-500 shrink-0" />
+                  <Tooltip content="This user is not verified!">
+                    <span className="inline-flex items-center">
+                      <BadgeAlert className="w-4 h-4 text-rose-500 shrink-0" />
+                    </span>
+                  </Tooltip>
                 )}
               </Flex>
-              {receiver?.role && (
+              {receiver?.publicId && (
                 <Text size="1" color="gray" className="capitalize block">
-                  {receiver.role}
+                  {receiver.publicId}
                 </Text>
               )}
             </Box>
@@ -238,11 +247,10 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
                   {/* Message Row */}
                   <Flex justify={isMine ? "end" : "start"} className="w-full">
                     <div
-                      className={`max-w-[80%] sm:max-w-[70%] px-3.5 py-2 rounded-2xl break-words text-sm shadow-sm transition-all overflow-hidden ${
-                        isMine
-                          ? "bg-sky-600 text-white rounded-br-xs"
-                          : "bg-slate-200/80 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 border border-[var(--gray-a3)] rounded-bl-xs"
-                      }`}
+                      className={`max-w-[80%] sm:max-w-[70%] px-3.5 py-2 rounded-2xl break-words text-sm shadow-sm transition-all overflow-hidden ${isMine
+                        ? "bg-sky-600 text-white rounded-br-xs"
+                        : "bg-slate-200/80 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 border border-[var(--gray-a3)] rounded-bl-xs"
+                        }`}
                     >
                       <p className="leading-relaxed whitespace-pre-wrap break-words min-w-0">
                         {chat.message}
@@ -342,15 +350,14 @@ const Middlebar: React.FC<MiddlebarProps> = ({ senderId, receiverId, onBack, onO
               shrink-0
               transition-all
               duration-200
-              ${
-                message.trim()
-                  ? `
+              ${message.trim()
+                ? `
                     !text-[var(--gray-a12)]
                     hover:!bg-[var(--gray-a4)]
                     hover:scale-105
                     active:scale-90
                   `
-                  : `
+                : `
                     !text-[var(--gray-a6)]
                     opacity-60
                   `
