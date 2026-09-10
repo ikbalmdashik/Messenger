@@ -245,7 +245,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
 
             await handleVerifySuccess("PASSWORD", tokenRef.current);
         } catch (error) {
-            console.error("Password verification failed:", error);
+            console.log("Password verification failed:", error);
             setApiError(getAxiosErrorMessage(error));
         } finally {
             setIsSubmittingPassword(false);
@@ -279,7 +279,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             setSuccessMessage(`OTP sent successfully to ${contact.value}.`);
             setViewMode("ENTER_OTP");
         } catch (error) {
-            console.error("Failed to send OTP:", error);
+            console.log("Failed to send OTP:", error);
             setApiError(getAxiosErrorMessage(error));
         } finally {
             setIsSendingOtp(false);
@@ -319,7 +319,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
             setViewMode("OTP_SUCCESS");
             setSuccessMessage("Verification successful!");
         } catch (error) {
-            console.error("OTP verification failed:", error);
+            console.log("OTP verification failed:", error);
             setApiError(getAxiosErrorMessage(error));
         } finally {
             setIsVerifyingOtp(false);

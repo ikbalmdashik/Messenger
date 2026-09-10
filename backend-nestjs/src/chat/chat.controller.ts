@@ -7,7 +7,7 @@ import { JwtAuthGuard } from '@/auth/auth.guard';
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
   
-
+  @UseGuards(JwtAuthGuard)
   @Post("/createChat")
   async CreateChat(@Body() createChatDto: CreateChatDto) {
     return await this.chatService.CreateChat(createChatDto);

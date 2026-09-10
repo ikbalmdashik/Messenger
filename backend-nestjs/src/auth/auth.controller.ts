@@ -61,6 +61,7 @@ export class AuthController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/logout')
   async logout(
     @Req() request: Request,
@@ -137,6 +138,7 @@ export class AuthController {
     return result; // { success: true }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/getUserByToken')
   async getUserByToken(@Req() req: Request) {
     const token = req.cookies?.access_token;
@@ -166,6 +168,7 @@ export class AuthController {
     return await this.authService.UpdateUser(updateUserDto);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/deleteUser')
   async DeleteUser(@Body() id: { id: number }) {
     return await this.authService.DeleteUser(id.id);

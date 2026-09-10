@@ -9,7 +9,7 @@ import { useForm } from "react-hook-form"
 import { motion, AnimatePresence } from "framer-motion"
 import { FaAngleRight } from "react-icons/fa"
 import { MdClose } from "react-icons/md"
-import { Mail, Lock, User, Phone, AlertCircle, MessageCircle, ArrowLeft, Eye, EyeOff } from "lucide-react"
+import { Mail, Lock, User, Phone, AlertCircle, MessageCircle, ArrowLeft, Eye, EyeOff, CheckCircle2 } from "lucide-react"
 
 import { Button, Card, Flex, Text, Box, TextField, IconButton, AlertDialog } from "@radix-ui/themes"
 
@@ -261,7 +261,7 @@ const MultiStepRegistration = () => {
                 className={!showPassword ? "tracking-[3px]" : ""}
                 {...register("password", {
                   required: "Password required",
-                  minLength: { value: 6, message: "Minimum 6 characters" }
+                  minLength: { value: 8, message: "Minimum 8 characters" }
                 })}
               >
                 <TextField.Slot>
@@ -334,14 +334,50 @@ const MultiStepRegistration = () => {
               )}
             </Box>
           </motion.div>
-        )
+        );
 
       case 4:
         return (
-          <motion.div key="step4-content" variants={stepVariants} initial="hidden" animate="visible" exit="exit">
-            <Text align="center" size="2" color="green" as="div">
-              Your account has been created successfully! You can now log in.
-            </Text>
+          <motion.div
+            key="step4-content"
+            variants={stepVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+          >
+            <Card variant="classic" size="4">
+              <Flex direction="column" align="center" gap={"3"}>
+                {/* Pop-in Checkmark Animation */}
+                <motion.div
+                  initial={{ scale: 0, rotate: -45 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.1 }}
+                >
+                  <Flex
+                    align="center"
+                    justify="center"
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: "50%",
+                      backgroundColor: "var(--green-a3)",
+                      color: "var(--green-9)",
+                    }}
+                  >
+                    <CheckCircle2 size={36} strokeWidth={2.5} />
+                  </Flex>
+                </motion.div>
+
+                <Flex direction="column" gap="1" align="center">
+                  <Text size="5" weight="bold">
+                    Account Created!
+                  </Text>
+                  <Text size="2" color="gray">
+                    Your account is ready. Log in to start exploring.
+                  </Text>
+                </Flex>
+              </Flex>
+            </Card>
           </motion.div>
         )
 

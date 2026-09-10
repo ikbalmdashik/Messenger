@@ -41,13 +41,17 @@ const Validation = ({ params }: ValidationProps) => {
           setStatus("valid1");
         } else if (action === "VERIFY_EMAIL") {
           setStatus("valid2");
+
+          // Broadcast message ONLY after email verification succeeds
+          const channel = new BroadcastChannel("verify_channel");
+          channel.postMessage({ type: "VERIFIED" });
+          channel.close();
         } else {
           setStatus("expired");
         }
       } catch (error: any) {
-        console.log("Error:", error.response?.data); // Add this
+        console.log("Error:", error.response?.data);
         const statusCode = error?.response?.data?.statusCode;
-        const action = error?.response?.data?.action;
 
         if (statusCode === 404) {
           setStatus("notfound");
