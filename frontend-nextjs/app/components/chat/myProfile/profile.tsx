@@ -41,11 +41,13 @@ import {
   UserCheck,
   AlertTriangle,
   LogOut,
+  AtSign,
 } from "lucide-react";
 import Routes from "@/app/routes/routes";
 
 interface FormFields {
   fullName: string;
+  publicId: string;
   email: string;
   phone: string;
   role: string;
@@ -67,6 +69,7 @@ const ProfileDialog: React.FC = () => {
 
   const [formInitialValues, setFormInitialValues] = useState({
     fullName: "",
+    publicId: "",
     email: "",
     phone: "",
   });
@@ -75,20 +78,6 @@ const ProfileDialog: React.FC = () => {
    * ============================================================
    * Cross-tab logout synchronization
    * ============================================================
-   *
-   * When one tab logs out:
-   *
-   * Tab 1:
-   *   1. Calls logout API
-   *   2. Broadcasts "logout"
-   *   3. Redirects to login
-   *
-   * Tab 2:
-   *   1. Receives "logout"
-   *   2. Closes profile dialog if open
-   *   3. Redirects to login
-   *
-   * Tab 2 does NOT call the logout API again.
    */
   useEffect(() => {
     const channel = new BroadcastChannel("auth_channel");
@@ -187,6 +176,7 @@ const ProfileDialog: React.FC = () => {
   } = useForm<FormFields>({
     defaultValues: {
       fullName: "",
+      publicId: "",
       email: "",
       phone: "",
       role: "",
@@ -204,6 +194,7 @@ const ProfileDialog: React.FC = () => {
     if (user && user !== initialUser) {
       const userData = {
         fullName: user.fullName || "",
+        publicId: user.publicId || "",
         email: user.email || "",
         phone: user.phone || "",
         role: user.role || "",
@@ -213,6 +204,7 @@ const ProfileDialog: React.FC = () => {
 
       setFormInitialValues({
         fullName: userData.fullName,
+        publicId: userData.publicId,
         email: userData.email,
         phone: userData.phone,
       });
@@ -224,8 +216,7 @@ const ProfileDialog: React.FC = () => {
    * Check whether editable fields changed
    * ============================================================
    *
-   * Email is intentionally excluded because email editing
-   * is not available yet.
+   * Email and Public ID are intentionally excluded from edits.
    */
   const hasChanged = useMemo(
     () =>
@@ -272,12 +263,6 @@ const ProfileDialog: React.FC = () => {
     try {
       setLogoutLoading(true);
 
-      /*
-       * Call backend logout endpoint.
-       *
-       * The HTTP-only authentication cookie is automatically
-       * included because withCredentials is enabled.
-       */
       await axios.post(
         API_ENDPOINTS.Logout,
         {},
@@ -286,9 +271,6 @@ const ProfileDialog: React.FC = () => {
         }
       );
 
-      /*
-       * Tell every other tab that logout happened.
-       */
       const channel = new BroadcastChannel(
         "auth_channel"
       );
@@ -299,9 +281,6 @@ const ProfileDialog: React.FC = () => {
 
       channel.close();
 
-      /*
-       * Close dialogs.
-       */
       setConfirmLogout(false);
       setOpen(false);
 
@@ -309,9 +288,6 @@ const ProfileDialog: React.FC = () => {
         "Logged out successfully."
       );
 
-      /*
-       * Redirect current tab.
-       */
       router.push(Routes.Login);
       router.refresh();
     } catch (error) {
@@ -346,6 +322,7 @@ const ProfileDialog: React.FC = () => {
       const updatedData = {
         userId: Number(userId),
         fullName: watchFields.fullName,
+        publicId: watchFields.publicId,
         email: watchFields.email,
         phone: watchFields.phone,
         role: watchFields.role,
@@ -365,6 +342,7 @@ const ProfileDialog: React.FC = () => {
 
       setFormInitialValues({
         fullName: updatedData.fullName,
+        publicId: updatedData.publicId,
         email: updatedData.email,
         phone: updatedData.phone,
       });
@@ -408,10 +386,6 @@ const ProfileDialog: React.FC = () => {
           }
         );
 
-        /*
-         * Broadcast logout because deleting the account
-         * also invalidates the current authentication session.
-         */
         const channel = new BroadcastChannel(
           "auth_channel"
         );
@@ -473,12 +447,14 @@ const ProfileDialog: React.FC = () => {
 
       setFormInitialValues({
         fullName: user.fullName || "",
+        publicId: user.publicId || "",
         email: user.email || "",
         phone: user.phone || "",
       });
 
       reset({
         fullName: user.fullName || "",
+        publicId: user.publicId || "",
         email: user.email || "",
         phone: user.phone || "",
         role: user.role || "",
@@ -565,9 +541,7 @@ const ProfileDialog: React.FC = () => {
               direction="column"
               gap="4"
             >
-              {/* ==================================================
-                  PROFILE HEADER
-              ================================================== */}
+              {/* Profile Header */}
 
               <Flex
                 align="center"
@@ -597,7 +571,7 @@ const ProfileDialog: React.FC = () => {
                     color="gray"
                     className="truncate block"
                   >
-                    {watchFields.email}
+                    @{watchFields.publicId || watchFields.email}
                   </Text>
                 </Box>
 
@@ -613,9 +587,7 @@ const ProfileDialog: React.FC = () => {
                 )}
               </Flex>
 
-              {/* ==================================================
-                  FORM FIELDS
-              ================================================== */}
+              {/* Form Fields */}
 
               <Flex
                 direction="column"
@@ -645,6 +617,32 @@ const ProfileDialog: React.FC = () => {
                   >
                     <TextField.Slot>
                       <UserCheck className="w-4 h-4 text-slate-400" />
+                    </TextField.Slot>
+                  </TextField.Root>
+                </Box>
+
+                {/* Public ID */}
+
+                <Box>
+                  <Text
+                    size="1"
+                    weight="medium"
+                    color="gray"
+                    className="mb-1 block"
+                  >
+                    Public ID
+                  </Text>
+
+                  <TextField.Root
+                    {...register("publicId")}
+                    disabled
+                    placeholder="Public ID"
+                    size="2"
+                    variant="surface"
+                    className="rounded-lg opacity-80"
+                  >
+                    <TextField.Slot>
+                      <AtSign className="w-4 h-4 text-slate-400" />
                     </TextField.Slot>
                   </TextField.Root>
                 </Box>
@@ -738,9 +736,7 @@ const ProfileDialog: React.FC = () => {
                 className="my-1 opacity-50"
               />
 
-              {/* ==================================================
-                  ACTION BUTTONS
-              ================================================== */}
+              {/* Action Buttons */}
 
               <Flex
                 align="center"
@@ -822,6 +818,8 @@ const ProfileDialog: React.FC = () => {
                         ...watchFields,
                         fullName:
                           formInitialValues.fullName,
+                        publicId:
+                          formInitialValues.publicId,
                         email:
                           formInitialValues.email,
                         phone:
@@ -865,9 +863,7 @@ const ProfileDialog: React.FC = () => {
         </Dialog.Content>
       </Dialog.Root>
 
-      {/* ========================================================
-          LOGOUT CONFIRMATION
-      ========================================================= */}
+      {/* Logout Confirmation */}
 
       <Dialog.Root
         open={confirmLogout}
@@ -936,9 +932,7 @@ const ProfileDialog: React.FC = () => {
         </Dialog.Content>
       </Dialog.Root>
 
-      {/* ========================================================
-          DELETE CONFIRMATION
-      ========================================================= */}
+      {/* Delete Confirmation */}
 
       <Dialog.Root
         open={confirmDelete}
@@ -973,6 +967,16 @@ const ProfileDialog: React.FC = () => {
             >
               <strong>Name:</strong>{" "}
               {watchFields.fullName ||
+                "N/A"}
+            </Text>
+
+            <Text
+              size="1"
+              color="gray"
+              className="block"
+            >
+              <strong>Public ID:</strong>{" "}
+              {watchFields.publicId ||
                 "N/A"}
             </Text>
 

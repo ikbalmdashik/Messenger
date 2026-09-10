@@ -52,26 +52,43 @@ export class AuthService {
     try {
       const isEmailExist = await this.IsEmailExist(createUserDto.email);
 
-      if (!isEmailExist) {
-        var user: UsersEntity = new UsersEntity();
-        const hashedPassword = await this.HashPassword(createUserDto.password);
-        user.fullName = createUserDto.fullName;
-        user.email = createUserDto.email;
-        user.publicId = user.email.split('@')[0],
-        user.phone = createUserDto.phone;
-        user.password = hashedPassword;
-        user.role = createUserDto.role;
-        await this.userRepository.save(user);
-
-        return { message: "User created." }
-      } else {
-        return { message: "Email is already exist!" }
+      if (isEmailExist) {
+        return { message: "Email is already exist!" };
       }
+
+      // Generate unique publicId
+      const basePublicId = createUserDto.email.split('@')[0];
+      let publicId = basePublicId;
+      let isPublicIdExist = await this.userRepository.findOne({ where: { publicId } });
+
+      while (isPublicIdExist) {
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000); // 4-digit suffix
+        const candidateId = `${basePublicId}${randomSuffix}`;
+
+        isPublicIdExist = await this.userRepository.findOne({ where: { publicId: candidateId } });
+
+        if (!isPublicIdExist) {
+          publicId = candidateId;
+        }
+      }
+
+      const hashedPassword = await this.HashPassword(createUserDto.password);
+
+      const user: UsersEntity = new UsersEntity();
+      user.fullName = createUserDto.fullName;
+      user.email = createUserDto.email;
+      user.publicId = publicId;
+      user.phone = createUserDto.phone;
+      user.password = hashedPassword;
+      user.role = createUserDto.role;
+
+      await this.userRepository.save(user);
+
+      return { message: "User created." };
     } catch (error: unknown) {
       if (error instanceof Error) {
         throw new Error(error.message);
       }
-
       throw new Error("Unknown error occurred");
     }
   }
