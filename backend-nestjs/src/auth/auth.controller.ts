@@ -49,8 +49,8 @@ export class AuthController {
 
     response.cookie("access_token", result.access_token, {
       httpOnly: true,                                  // Prevents client-side JS access (XSS protection)
-      secure: false,                                   // Transmit only over HTTPS in production
-      sameSite: 'lax',                                 // Protects against CSRF attacks
+      secure: true,                                    // Transmit only over HTTPS in production
+      sameSite: 'none',                                // Protects against CSRF attacks
       maxAge: 1 * 24 * 60 * 60 * 1000,                 // Expiration time (e.g., 1 days in milliseconds)
       path: '/',                                       // Cookie available across the whole site
     });

@@ -35,6 +35,7 @@ import { AuthModule } from './auth/auth.module';
         // Enable TypeORM logging
         logging: true,
 
+
         // Entity files
         entities: ['dist/**/*.entity.js'],
 
