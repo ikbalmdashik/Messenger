@@ -1,4 +1,3 @@
-import { ChatMessageEntity } from "src/chat/entities/chat.entity";
 import {
   Column,
   Entity,
@@ -6,12 +5,18 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   CreateDateColumn,
-  Index, ManyToOne,
+  Index,
+  ManyToOne,
   UpdateDateColumn,
-  BeforeInsert
 } from "typeorm";
 
-export class Auth { }
+import { ChatMessageEntity } from "@/chat/entities/chat.entity";
+
+/*
+ * ============================================================
+ * USERS
+ * ============================================================
+ */
 
 @Entity("users")
 export class UsersEntity {
@@ -30,30 +35,58 @@ export class UsersEntity {
   @Column()
   password: string;
 
-  @Column({ unique: true, nullable: true })
+  @Column({
+    unique: true,
+    nullable: true,
+  })
   @Index()
   publicId: string;
 
   @Column()
   role: string;
 
-  @Column({ default: false })
+  @Column({
+    default: false,
+  })
   isEmailVerified: boolean;
 
-  // Messages sent by the user
-  @OneToMany(() => ChatMessageEntity, (chat) => chat.sender)
+  /**
+   * Messages sent by this user.
+   *
+   * There is no receivedMessages relationship anymore.
+   *
+   * In the new conversation architecture, received messages
+   * are determined through:
+   *
+   * Conversation
+   *      ↓
+   * ConversationParticipant
+   *      ↓
+   * User
+   */
+  @OneToMany(
+    () => ChatMessageEntity,
+    (chat) => chat.sender,
+  )
   sentMessages: ChatMessageEntity[];
 
-  // Messages received by the user
-  @OneToMany(() => ChatMessageEntity, (chat) => chat.receiver)
-  receivedMessages: ChatMessageEntity[];
-
-  @OneToMany(() => UserSessionEntity, (session) => session.user)
+  /**
+   * User login sessions.
+   */
+  @OneToMany(
+    () => UserSessionEntity,
+    (session) => session.user,
+  )
   sessions: UserSessionEntity[];
 }
 
+/*
+ * ============================================================
+ * AUTH TOKENS
+ * ============================================================
+ */
 
-@Entity('auth_tokens')
+@Entity("auth_tokens")
 export class AuthTokenEntity {
   @PrimaryGeneratedColumn()
   id: number;
@@ -61,70 +94,113 @@ export class AuthTokenEntity {
   @Column()
   userId: number;
 
-  @Column({ unique: true })
+  @Column({
+    unique: true,
+  })
   token: string;
 
   @Column()
-  usedFor: String;
+  usedFor: string;
 
   @Column()
   expiresAt: Date;
 
-  @Column({ default: false })
+  @Column({
+    default: false,
+  })
   used: boolean;
 
   @Column()
   createdAt: Date;
 }
 
+/*
+ * ============================================================
+ * OTP
+ * ============================================================
+ */
+
 export enum OtpType {
   FORGOT_PASSWORD = "FORGOT_PASSWORD",
 }
 
-@Entity('auth_otps')
-// Index for fast validation lookups
-@Index('IDX_USER_OTP_LOOKUP', ['userId', 'usedFor', 'isUsed', 'expiresAt'])
+@Entity("auth_otps")
+@Index(
+  "IDX_USER_OTP_LOOKUP",
+  [
+    "userId",
+    "usedFor",
+    "isUsed",
+    "expiresAt",
+  ],
+)
 export class AuthOtpEntity {
-  @PrimaryGeneratedColumn('uuid') // 1. Use UUIDs instead of auto-incrementing integers
+  @PrimaryGeneratedColumn("uuid")
   id: string;
 
-  @Column({ type: 'int' }) // Ensure explicit type if referencing User primary key
+  @Column({
+    type: "int",
+  })
   userId: number;
 
-  // Foreign Key Relationship (Optional but recommended for data integrity)
-  @ManyToOne(() => UsersEntity, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'userId' })
+  @ManyToOne(
+    () => UsersEntity,
+    {
+      onDelete: "CASCADE",
+    },
+  )
+  @JoinColumn({
+    name: "userId",
+  })
   user: UsersEntity;
 
-  @Column({ length: 255 })
+  @Column({
+    length: 255,
+  })
   otpHash: string;
 
   @Column()
   usedFor: string;
 
-  @Column({ type: 'timestamp with time zone' }) // 2. Explicit timezone-aware timestamp
+  @Column({
+    type: "timestamp with time zone",
+  })
   expiresAt: Date;
 
-  @Column({ default: false })
+  @Column({
+    default: false,
+  })
   isUsed: boolean;
 
-  @Column({ default: 0 })
+  @Column({
+    default: 0,
+  })
   attempts: number;
 
-  @Column({ nullable: true }) // 3. Store requester IP to prevent brute-force attacks
+  @Column({
+    nullable: true,
+  })
   ipAddress?: string;
 
-  @CreateDateColumn({ type: 'timestamp with time zone' })
+  @CreateDateColumn({
+    type: "timestamp with time zone",
+  })
   createdAt: Date;
 }
 
+/*
+ * ============================================================
+ * USER SESSIONS
+ * ============================================================
+ */
+
 export enum SessionStatus {
-  ACTIVE = 'ACTIVE',
-  REVOKED = 'REVOKED',
-  EXPIRED = 'EXPIRED',
+  ACTIVE = "ACTIVE",
+  REVOKED = "REVOKED",
+  EXPIRED = "EXPIRED",
 }
 
-@Entity('user_sessions')
+@Entity("user_sessions")
 export class UserSessionEntity {
   @PrimaryGeneratedColumn()
   sessionId: number;
@@ -132,33 +208,70 @@ export class UserSessionEntity {
   @Column()
   userId: number;
 
-  @ManyToOne(() => UsersEntity, (user) => user.sessions, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'userId' })
+  @ManyToOne(
+    () => UsersEntity,
+    (user) => user.sessions,
+    {
+      onDelete: "CASCADE",
+    },
+  )
+  @JoinColumn({
+    name: "userId",
+  })
   user: UsersEntity;
 
-  // Stores the unique JWT ID (jti claim) or SHA-256 hash of the token
-  @Column({ unique: true })
+  /**
+   * Unique identifier for the JWT/session.
+   *
+   * Prefer storing a JTI or SHA-256 token hash here.
+   */
+  @Column({
+    unique: true,
+  })
   @Index()
   tokenIdentifier: string;
 
-  // Session metadata for device management
-  @Column({ nullable: true })
+  /**
+   * Device/browser information.
+   */
+  @Column({
+    nullable: true,
+  })
   deviceInfo: string;
 
-  @Column({ nullable: true })
+  /**
+   * IP address used by the session.
+   */
+  @Column({
+    nullable: true,
+  })
   ipAddress: string;
 
+  /**
+   * Current session status.
+   */
   @Column({
-    type: 'enum',
+    type: "enum",
     enum: SessionStatus,
     default: SessionStatus.ACTIVE,
   })
   status: SessionStatus;
 
-  @Column({ type: 'timestamp' })
+  /**
+   * Session expiration time.
+   */
+  @Column({
+    type: "timestamp",
+  })
   expiresAt: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  /**
+   * Last time this session was active.
+   */
+  @Column({
+    type: "timestamp",
+    nullable: true,
+  })
   lastActiveAt: Date;
 
   @CreateDateColumn()

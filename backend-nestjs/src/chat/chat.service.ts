@@ -1,54 +1,273 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { ChatMessageEntity } from './entities/chat.entity';
-import { CreateChatDto, CreateChatDtoDemo } from './dto/create-chat.dto';
+import {
+  BadRequestException,
+  Injectable,
+} from "@nestjs/common";
+
+import { InjectRepository } from "@nestjs/typeorm";
+import {
+  DataSource,
+  Repository,
+} from "typeorm";
+
+import { ChatMessageEntity } from "./entities/chat.entity";
+
+import { ConversationService } from "./conversation/conversation.service";
+
+import { ConversationParticipantEntity } from "./conversation/entities/conversation-participant.entity";
+
 @Injectable()
 export class ChatService {
   constructor(
     @InjectRepository(ChatMessageEntity)
-    private messageRepository: Repository<ChatMessageEntity>,
+    private readonly messageRepository: Repository<ChatMessageEntity>,
 
+    @InjectRepository(
+      ConversationParticipantEntity,
+    )
+    private readonly participantRepository: Repository<ConversationParticipantEntity>,
+
+    private readonly conversationService: ConversationService,
+
+    private readonly dataSource: DataSource,
   ) {}
 
-  async FormatDate(date: Date) {
-    const options: Intl.DateTimeFormatOptions = {
-      year: '2-digit',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true // Enables AM/PM format
-    };
+  /**
+   * Get messages belonging to a conversation.
+   */
+  async GetConversation(
+    userId: number,
+    conversationId: number,
+  ) {
+    if (
+      conversationId === undefined ||
+      conversationId === null ||
+      !Number.isFinite(Number(conversationId))
+    ) {
+      throw new BadRequestException(
+        "conversationId is required.",
+      );
+    }
 
-    return (date.toLocaleString('en-GB', options).replace(', ', ' - ')).toString();
+    if (
+      userId === undefined ||
+      userId === null ||
+      !Number.isFinite(Number(userId))
+    ) {
+      throw new BadRequestException(
+        "Authenticated user ID is required.",
+      );
+    }
+
+    const normalizedConversationId =
+      Number(conversationId);
+
+    const normalizedUserId =
+      Number(userId);
+
+    await this.conversationService.getConversationForUser(
+      normalizedConversationId,
+      normalizedUserId,
+    );
+
+    return await this.messageRepository
+      .createQueryBuilder("chat")
+      .where(
+        "chat.conversationId = :conversationId",
+        {
+          conversationId:
+            normalizedConversationId,
+        },
+      )
+      .orderBy(
+        "chat.createdAt",
+        "ASC",
+      )
+      .getMany();
   }
 
-  async CreateChat(createChatDto: CreateChatDto) {
-    const chat: ChatMessageEntity = new ChatMessageEntity();
-    chat.senderId = createChatDto.senderId;
-    chat.receiverId = createChatDto.receiverId;
-    chat.message = createChatDto.message;
-    chat.status = createChatDto.status;
-    chat.createdAt = new Date().toLocaleString().replace(', ', ' - ');
-    const newMessage = this.messageRepository.create(chat);
-    return await this.messageRepository.save(newMessage);
+  /**
+   * Create a message and update unread count.
+   *
+   * senderId always comes from the authenticated
+   * socket user. Never trust senderId from frontend.
+   */
+  async CreateChat(
+    userId: number,
+    conversationId: number,
+    message: string,
+    status: string,
+  ) {
+    if (
+      conversationId === undefined ||
+      conversationId === null ||
+      !Number.isFinite(Number(conversationId))
+    ) {
+      throw new BadRequestException(
+        "conversationId is required.",
+      );
+    }
+
+    const normalizedUserId =
+      Number(userId);
+
+    const normalizedConversationId =
+      Number(conversationId);
+
+    const trimmedMessage =
+      message?.trim();
+
+    if (!trimmedMessage) {
+      throw new BadRequestException(
+        "Message cannot be empty.",
+      );
+    }
+
+    /*
+     * Verify that the sender belongs
+     * to this conversation.
+     */
+    await this.conversationService.getConversationForUser(
+      normalizedConversationId,
+      normalizedUserId,
+    );
+
+    return await this.dataSource.transaction(
+      async (manager) => {
+        const messageRepository =
+          manager.getRepository(
+            ChatMessageEntity,
+          );
+
+        const participantRepository =
+          manager.getRepository(
+            ConversationParticipantEntity,
+          );
+
+        /*
+         * Get all conversation participants.
+         */
+        const participants =
+          await participantRepository.find({
+            where: {
+              conversationId:
+                normalizedConversationId,
+            },
+          });
+
+        if (participants.length === 0) {
+          throw new BadRequestException(
+            "Conversation has no participants.",
+          );
+        }
+
+        const senderParticipant =
+          participants.find(
+            (participant) =>
+              Number(participant.userId) ===
+              normalizedUserId,
+          );
+
+        if (!senderParticipant) {
+          throw new BadRequestException(
+            "You are not a participant of this conversation.",
+          );
+        }
+
+        /*
+         * For DIRECT conversations there should
+         * be one other participant.
+         */
+        const recipientParticipant =
+          participants.find(
+            (participant) =>
+              Number(participant.userId) !==
+              normalizedUserId,
+          );
+
+        if (!recipientParticipant) {
+          throw new BadRequestException(
+            "Recipient not found.",
+          );
+        }
+
+        /*
+         * Create message.
+         */
+        const chat =
+          messageRepository.create({
+            conversationId:
+              normalizedConversationId,
+
+            senderId:
+              normalizedUserId,
+
+            message:
+              trimmedMessage,
+
+            status:
+              status || "sent",
+
+            createdAt:
+              new Date(),
+          });
+
+        const savedMessage =
+          await messageRepository.save(
+            chat,
+          );
+
+        /*
+         * Sender has no unread messages.
+         */
+        senderParticipant.unreadCount = 0;
+
+        /*
+         * Recipient now has one more
+         * unread message.
+         */
+        recipientParticipant.unreadCount =
+          Number(
+            recipientParticipant.unreadCount ||
+              0,
+          ) + 1;
+
+        await participantRepository.save([
+          senderParticipant,
+          recipientParticipant,
+        ]);
+
+        return {
+          message: savedMessage,
+
+          senderId:
+            normalizedUserId,
+
+          recipientId:
+            Number(
+              recipientParticipant.userId,
+            ),
+
+          senderUnreadCount:
+            senderParticipant.unreadCount,
+
+          recipientUnreadCount:
+            recipientParticipant.unreadCount,
+        };
+      },
+    );
   }
 
-  async getMessages() {
-    return await this.messageRepository.find({
-      order: { chatId: "DESC" }, // You can reverse it in frontend if needed
-      take: 50, // Limit the number of messages retrieved
-    });
-  }
-
-  async GetConversation(getConversationDto: Partial<CreateChatDto>) {
-    return await this.messageRepository.createQueryBuilder('chat')
-    .where(
-      '(chat.senderId = :senderId AND chat.receiverId = :receiverId) OR (chat.senderId = :receiverId AND chat.receiverId = :senderId)',
-      getConversationDto
-    )
-    .orderBy('chat.chatId', 'ASC') // Optional: order by timestamp
-    .getMany();
+  /**
+   * Get messages for a conversation after
+   * verifying that the current user is a participant.
+   */
+  async GetMessages(
+    userId: number,
+    conversationId: number,
+  ) {
+    return await this.GetConversation(
+      userId,
+      conversationId,
+    );
   }
 }

@@ -150,6 +150,13 @@ export class AuthController {
     return await this.authService.getUserByToken(token);
   }
 
+  @Post('/searchByPublicId')
+  async searchUsers(
+    @Body('publicId') publicId: string,
+  ) {
+    return this.authService.searchByPublicId(publicId);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get("/getAllUsers")
   async GetAllUsers() {

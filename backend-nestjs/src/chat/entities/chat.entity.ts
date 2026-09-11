@@ -1,60 +1,55 @@
-import { UsersEntity } from 'src/auth/entities/auth.entity';
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from "typeorm";
 
-// @Entity("Chats")
-// export class ChatMessageEntity {
-//   @PrimaryGeneratedColumn()
-//   chatId: number;
+import { UsersEntity } from "@/auth/entities/auth.entity";
+import { ConversationEntity } from "../conversation/entities/conversation.entity";
 
-//   @Column({ name: "senderId" })
-//   senderId: number;
-
-//   @Column({ name: "receiverId" })
-//   receiverId: number
-
-//   // Relationship to the sender
-//   @ManyToOne(() => UsersEntity, user => user.sentMessages)
-//   @JoinColumn({ name: "senderId" })
-//   sender: UsersEntity;
-
-//   // Relationship to the receiver
-//   @ManyToOne(() => UsersEntity, user => user.receivedMessages)
-//   @JoinColumn({ name: "receiverId" })
-//   receiver: UsersEntity;
-
-//   @Column()
-//   message: string;
-
-//   @Column()
-//   status: string;
-
-//   @Column()
-//   createdAt: string;
-// }
-
-
-
-
-@Entity("Chats")
+@Entity("chat_messages")
+@Index(
+  ["conversationId", "createdAt"],
+)
 export class ChatMessageEntity {
   @PrimaryGeneratedColumn()
-  chatId: number;
+  messageId: number;
 
-  @Column({ name: "senderId" })
+  @Column()
+  conversationId: number;
+
+  @Column()
   senderId: number;
 
-  @Column({ name: "receiverId" })
-  receiverId: number;
-
-  // Relationship to the sender (deletes chat if sender is deleted)
-  @ManyToOne(() => UsersEntity, (user) => user.sentMessages, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "senderId" })
+  @ManyToOne(
+    () => UsersEntity,
+    (user) =>
+      user.sentMessages,
+    {
+      onDelete: "CASCADE",
+    },
+  )
+  @JoinColumn({
+    name: "senderId",
+  })
   sender: UsersEntity;
 
-  // Relationship to the receiver (deletes chat if receiver is deleted)
-  @ManyToOne(() => UsersEntity, (user) => user.receivedMessages, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "receiverId" })
-  receiver: UsersEntity;
+  @ManyToOne(
+    () => ConversationEntity,
+    (conversation) =>
+      conversation.messages,
+    {
+      onDelete: "CASCADE",
+    },
+  )
+  @JoinColumn({
+    name: "conversationId",
+  })
+  conversation: ConversationEntity;
 
   @Column()
   message: string;
@@ -62,6 +57,6 @@ export class ChatMessageEntity {
   @Column()
   status: string;
 
-  @Column()
-  createdAt: string;
+  @CreateDateColumn()
+  createdAt: Date;
 }

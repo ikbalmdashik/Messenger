@@ -462,6 +462,30 @@ export class AuthService {
     return tokenRecord;
   }
 
+  async searchByPublicId(publicId: string): Promise<UsersEntity[]> {
+    const search = publicId.trim();
+
+    // Don't search for empty or very short values
+    if (search.length < 2) {
+      return [];
+    }
+
+    return this.userRepository
+      .createQueryBuilder("user")
+      .select([
+        "user.userId",
+        "user.fullName",
+        "user.publicId",
+        "user.isEmailVerified",
+      ])
+      .where("user.publicId ILIKE :publicId", {
+        publicId: `${search}%`,
+      })
+      .orderBy("user.publicId", "ASC")
+      .limit(10)
+      .getMany();
+  }
+
   async getUserByToken(token: string): Promise<UsersEntity> {
     // 1. Find session matching the token and ensure it is not expired
     if (!token) {

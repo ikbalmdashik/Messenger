@@ -1,70 +1,101 @@
-import API_ENDPOINTS from "@/app/routes/api";
-import axios from "axios";
-import { useEffect, useState } from "react";
+"use client";
 
-export interface Chat {
-    chatId: number | null;
-    senderId: number | null;
-    receiverId: number | null;
-    message: string | null;
-    status: string | null;
-    createdAt: string | null;
+import { useCallback, useState } from "react";
+import axios from "axios";
+
+import API_ENDPOINTS from "@/app/routes/api";
+
+export interface ChatMessage {
+  messageId: number;
+  conversationId: number;
+  senderId: number;
+  message: string;
+  status: string;
+  createdAt: string;
 }
 
-export const initialChat: Chat = {
-    chatId: null,
-    senderId: null,
-    receiverId: null,
-    message: null,
-    status: null,
-    createdAt: null,
-};
+export interface CreateChatPayload {
+  conversationId: number;
+  message: string;
+  status: string;
+}
 
-const useChats = (
-    senderId: number | null,
-    receiverId: number | null
-) => {
-    const [chats, setChats] = useState<Chat[]>([]);
+export default function useChat() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        // Don't call API until both users are available
-        if (senderId === null || receiverId === null) {
-            setChats([]);
-            return;
-        }
+  /**
+   * Send a message through the HTTP API.
+   */
+  const createChat = useCallback(
+    async (payload: CreateChatPayload) => {
+      try {
+        setLoading(true);
+        setError(null);
 
-        const fetchChatsById = async () => {
-            try {
-                const response = await axios.post(
-                    API_ENDPOINTS.GetChats,
-                    {
-                        senderId: Number(senderId),
-                        receiverId: Number(receiverId),
-                    },
-                    {
-                        withCredentials: true,
-                    }
-                );
+        const response = await axios.post<ChatMessage>(
+          API_ENDPOINTS.CreateChat,
+          payload,
+          {
+            withCredentials: true,
+          },
+        );
 
-                if (Array.isArray(response.data)) {
-                    setChats(response.data);
-                } else {
-                    console.log(
-                        "GetChats response is not an array:",
-                        response.data
-                    );
-                    setChats([]);
-                }
-            } catch (error) {
-                console.log("Failed to fetch chats:", error);
-                setChats([]);
-            }
-        };
+        return response.data;
+      } catch (error: any) {
+        const message =
+          error?.response?.data?.message ||
+          "Failed to send message.";
 
-        fetchChatsById();
-    }, [senderId, receiverId]);
+        setError(message);
 
-    return chats;
-};
+        throw error;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
 
-export default useChats;
+  /**
+   * Get messages for a conversation.
+   */
+  const getConversation = useCallback(
+    async (conversationId: number) => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await axios.post<ChatMessage[]>(
+          API_ENDPOINTS.GetConversation,
+          {
+            conversationId,
+          },
+          {
+            withCredentials: true,
+          },
+        );
+
+        return response.data;
+      } catch (error: any) {
+        const message =
+          error?.response?.data?.message ||
+          "Failed to get conversation.";
+
+        setError(message);
+
+        throw error;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  return {
+    createChat,
+    getConversation,
+    loading,
+    error,
+  };
+}
