@@ -520,7 +520,7 @@ const Middlebar: React.FC<
             return;
           }
 
-          console.error(
+          console.log(
             "Failed to load conversation:",
             error,
           );
@@ -763,7 +763,7 @@ const Middlebar: React.FC<
             },
           );
         } catch (error) {
-          console.error(
+          console.log(
             "Failed to load older messages:",
             error,
           );
@@ -964,7 +964,7 @@ const Middlebar: React.FC<
                 },
               );
             } else {
-              console.error(
+              console.log(
                 "Failed to join conversation:",
                 response,
               );
@@ -1065,7 +1065,7 @@ const Middlebar: React.FC<
       (
         error: Error,
       ) => {
-        console.error(
+        console.log(
           "Socket connection error:",
           error,
         );
@@ -1362,7 +1362,7 @@ const Middlebar: React.FC<
             response.success ===
               false
           ) {
-            console.error(
+            console.log(
               "Send message failed:",
               response.message,
             );

@@ -416,7 +416,7 @@ const ChatSidebar: React.FC<
             return;
           }
 
-          console.error(
+          console.log(
             "Failed to load conversations:",
             error,
           );
@@ -606,7 +606,7 @@ const ChatSidebar: React.FC<
     socket.on(
       "connect_error",
       (error) => {
-        console.error(
+        console.log(
           "Sidebar socket connection error:",
           error,
         );
@@ -969,7 +969,7 @@ const ChatSidebar: React.FC<
               return;
             }
 
-            console.error(
+            console.log(
               "Public ID search failed:",
               error,
             );
@@ -1302,7 +1302,7 @@ const ChatSidebar: React.FC<
             selectedUser,
           );
         } catch (error) {
-          console.error(
+          console.log(
             "Failed to create/get conversation:",
             error,
           );
