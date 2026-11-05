@@ -169,6 +169,12 @@ export class AuthController {
     return this.authService.GetDataById(+id);
   }
 
+  @Post('/getUserByPublicId')
+  async GetDataByPublicId(@Body('publicId') publicId: string) {
+    return this.authService.GetDataByPublicId(publicId);
+  }
+
+
   @UseGuards(JwtAuthGuard)
   @Post('/updateUser')
   async UpdateUser(@Body() updateUserDto: Partial<UpdateUserDto>) {

@@ -527,6 +527,23 @@ export class AuthService {
     return result ? result : null;
   }
 
+  async GetDataByPublicId(publicId: string) {
+    const result = await this.userRepository.createQueryBuilder('user')
+      .select([
+        'user.userId',
+        'user.fullName',
+        'user.phone',
+        'user.email',
+        'user.publicId',
+        'user.role',
+        'user.isEmailVerified'
+      ])
+      .where('user.publicId = :publicId', { publicId })
+      .getOne();
+
+    return result ? result : null;
+  }
+
   // get all users
   async GetAllUsers() {
     const result = await this.userRepository.createQueryBuilder('user')

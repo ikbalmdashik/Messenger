@@ -1,3 +1,4 @@
+
 const defaultURL =
   process.env.NEXT_PUBLIC_DEFAULT_API_URL;
 
@@ -22,8 +23,7 @@ export interface IsEmailExistRequest {
   email: string;
 }
 
-export interface IsEmailExistResponse
-  extends ApiResponse {
+export interface IsEmailExistResponse extends ApiResponse {
   exists?: boolean;
 }
 
@@ -33,8 +33,7 @@ export interface ValidateUserRequest {
   usedFor: string;
 }
 
-export interface ValidateUserResponse
-  extends ApiResponse {
+export interface ValidateUserResponse extends ApiResponse {
   token?: string;
 }
 
@@ -42,28 +41,24 @@ export interface LoginRequest {
   token: string;
 }
 
-export interface LoginResponse
-  extends ApiResponse {
+export interface LoginResponse extends ApiResponse {
   access_token?: string;
 }
 
-export type LogoutResponse =
-  ApiResponse;
+export type LogoutResponse = ApiResponse;
 
 export interface SendEmailVerificationRequest {
   email: string;
   type: string;
 }
 
-export type SendEmailVerificationResponse =
-  ApiResponse;
+export type SendEmailVerificationResponse = ApiResponse;
 
 export interface SendPasswordResetLinkRequest {
   email: string;
 }
 
-export type SendPasswordResetLinkResponse =
-  ApiResponse;
+export type SendPasswordResetLinkResponse = ApiResponse;
 
 export interface SendOtpRequest {
   email?: string;
@@ -71,23 +66,20 @@ export interface SendOtpRequest {
   usedFor: string;
 }
 
-export type SendOtpResponse =
-  ApiResponse;
+export type SendOtpResponse = ApiResponse;
 
 export interface UpdatePasswordRequest {
   token: string;
   password: string;
 }
 
-export type UpdatePasswordResponse =
-  ApiResponse;
+export type UpdatePasswordResponse = ApiResponse;
 
 export interface ValidateLinkRequest {
   token: string;
 }
 
-export interface ValidateLinkResponse
-  extends ApiResponse {
+export interface ValidateLinkResponse extends ApiResponse {
   action?: string;
 }
 
@@ -114,8 +106,7 @@ export interface UserResponse {
   onlineStatus?: string;
 }
 
-export interface GetUserByTokenResponse
-  extends UserResponse {
+export interface GetUserByTokenResponse extends UserResponse {
   success?: boolean;
 }
 
@@ -126,16 +117,13 @@ export interface CreateUserRequest {
   password: string;
 }
 
-export interface CreateUserResponse
-  extends ApiResponse {
+export interface CreateUserResponse extends ApiResponse {
   userId?: number;
 }
 
-export type GetAllUsersResponse =
-  UserResponse[];
+export type GetAllUsersResponse = UserResponse[];
 
-export type GetUserByIdResponse =
-  UserResponse;
+export type GetUserByIdResponse = UserResponse;
 
 export interface UpdateUserRequest {
   fullName?: string;
@@ -144,13 +132,11 @@ export interface UpdateUserRequest {
   profilePicture?: string | null;
 }
 
-export interface UpdateUserResponse
-  extends ApiResponse {
+export interface UpdateUserResponse extends ApiResponse {
   user?: UserResponse;
 }
 
-export type DeleteUserResponse =
-  ApiResponse;
+export type DeleteUserResponse = ApiResponse;
 
 /**
  * ============================================================
@@ -175,19 +161,35 @@ export interface SearchUserByPublicIdResponse {
 }
 
 /**
+ * GET USER BY PUBLIC ID
+ *
+ * Response returned by:
+ * GET /auth/getUserByPublicId/:publicId
+ */
+
+export interface GetUserByPublicIdResponse {
+  userId: number;
+  fullName: string;
+  phone: string;
+  email: string;
+  publicId: string;
+  role: string;
+  isEmailVerified: boolean;
+}
+
+/**
  * ============================================================
  * CONVERSATION TYPES
  * ============================================================
  */
 
-export type ConversationType =
-  | "DIRECT"
-  | "GROUP";
+export type ConversationType = "DIRECT" | "GROUP";
 
 /**
  * Basic user information associated with
  * a conversation.
  */
+
 export interface ConversationUser {
   userId: number;
   fullName: string;
@@ -212,6 +214,7 @@ export interface ConversationUser {
  * For GROUP conversations:
  * - name represents the group name.
  */
+
 export interface ConversationResponse {
   conversationId: number;
 
@@ -237,12 +240,12 @@ export interface ConversationResponse {
   updatedAt?: string;
 }
 
-export type GetConversationsResponse =
-  ConversationResponse[];
+export type GetConversationsResponse = ConversationResponse[];
 
 /**
  * Create/get a direct conversation.
  */
+
 export interface CreateConversationRequest {
   userId: number;
 }
@@ -256,6 +259,7 @@ export interface CreateConversationResponse {
    * true  = newly created
    * false = existing conversation returned
    */
+
   isNew: boolean;
 }
 
@@ -300,18 +304,19 @@ export interface ChatMessageResponse {
  *
  * POST /chat/getConversation
  */
+
 export interface GetConversationRequest {
   conversationId: number;
 }
 
-export type GetConversationResponse =
-  ChatMessageResponse[];
+export type GetConversationResponse = ChatMessageResponse[];
 
 /**
  * Request for:
  *
  * POST /chat/createChat
  */
+
 export interface SendMessageRequest {
   conversationId: number;
 
@@ -345,6 +350,7 @@ export interface SendMessageResponse {
  *
  * socket.emit("join_room", payload)
  */
+
 export interface JoinConversationRoomRequest {
   conversationId: number;
 }
@@ -354,6 +360,7 @@ export interface JoinConversationRoomRequest {
  *
  * socket.emit("leave_room", payload)
  */
+
 export interface LeaveConversationRoomRequest {
   conversationId: number;
 }
@@ -371,6 +378,7 @@ export interface LeaveConversationRoomRequest {
  *
  * client.data.userId
  */
+
 export interface SocketSendMessageRequest {
   conversationId: number;
 
@@ -384,8 +392,8 @@ export interface SocketSendMessageRequest {
  *
  * socket.on("receive_message", ...)
  */
-export type SocketReceiveMessageResponse =
-  ChatMessageResponse;
+
+export type SocketReceiveMessageResponse = ChatMessageResponse;
 
 /**
  * ============================================================
@@ -459,6 +467,9 @@ const API_ENDPOINTS = {
   GetUserByToken:
     `${defaultURL}/auth/getUserByToken`,
 
+  GetUserByPublicId:
+    `${defaultURL}/auth/getUserByPublicId/`,
+
   SearchUserByPublicId:
     `${defaultURL}/auth/searchByPublicId`,
 
@@ -484,8 +495,6 @@ const API_ENDPOINTS = {
     `${defaultURL}/chat/conversations`,
 
   /**
-   * ----------------------------------------------------------
-   *
    * POST:
    *   /chat/conversations
    *
@@ -502,8 +511,6 @@ const API_ENDPOINTS = {
     `${defaultURL}/chat/conversations`,
 
   /**
-   * ----------------------------------------------------------
-   *
    * POST:
    *   /chat/getConversation
    *
