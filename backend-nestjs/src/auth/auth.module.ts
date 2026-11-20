@@ -4,6 +4,7 @@ import { AuthController } from './auth.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthOtpEntity, AuthTokenEntity, UsersEntity, UserSessionEntity } from './entities/auth.entity';
+import { UserBlockEntity } from './entities/user-block.entity';
 import { ChatMessageEntity } from 'src/chat/entities/chat.entity';
 import { MailService } from 'src/mailer/mail.service';
 import { PassportModule } from '@nestjs/passport';
@@ -17,6 +18,7 @@ import { JwtStrategy } from './jwt.strategy';
       AuthTokenEntity,
       AuthOtpEntity,
       UserSessionEntity,
+      UserBlockEntity,
     ]),
 
     PassportModule.register({
@@ -30,6 +32,6 @@ import { JwtStrategy } from './jwt.strategy';
   ],
   controllers: [AuthController],
   providers: [AuthService, MailService, JwtStrategy],
-  exports: [PassportModule, JwtModule, JwtStrategy]
+  exports: [PassportModule, JwtModule, JwtStrategy, AuthService]
 })
 export class AuthModule {}

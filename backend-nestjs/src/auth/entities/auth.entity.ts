@@ -18,6 +18,87 @@ import { ChatMessageEntity } from "@/chat/entities/chat.entity";
  * ============================================================
  */
 
+export interface UserAddress {
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+}
+
+export interface UserEducation {
+  institution: string;
+  degree?: string;
+  fieldOfStudy?: string;
+  startYear?: number | null;
+  endYear?: number | null;
+  current?: boolean;
+  description?: string;
+}
+
+export interface UserSocialLink {
+  platform: string;
+  url: string;
+}
+
+/**
+ * Extra contact info. Account email and phone
+ * live in their own columns.
+ */
+export interface UserContact {
+  website?: string;
+  socials?: UserSocialLink[];
+}
+
+export type ProfileVisibility =
+  | "EVERYONE"
+  | "CONTACTS"
+  | "ONLY_ME";
+
+export interface UserPrivacy {
+  /** Email, phone, website, social links */
+  contact: ProfileVisibility;
+  education: ProfileVisibility;
+  /** City / state / country */
+  location: ProfileVisibility;
+}
+
+export type GroupPermissionLevel = "ALL" | "ADMINS";
+
+export interface GroupPermissionDefaults {
+  addMembers: GroupPermissionLevel;
+  editInfo: GroupPermissionLevel;
+  sendMessages: GroupPermissionLevel;
+}
+
+export type GroupInviteLevel =
+  | "EVERYONE"
+  | "CONTACTS"
+  | "NOBODY";
+
+export interface UserGroupSettings {
+  /** Permissions applied to groups this user creates */
+  defaults: GroupPermissionDefaults;
+  /** Who may add this user to a group */
+  whoCanAddMe: GroupInviteLevel;
+}
+
+export const DEFAULT_GROUP_SETTINGS: UserGroupSettings = {
+  defaults: {
+    addMembers: "ADMINS",
+    editInfo: "ADMINS",
+    sendMessages: "ALL",
+  },
+  whoCanAddMe: "EVERYONE",
+};
+
+export const DEFAULT_PRIVACY: UserPrivacy = {
+  contact: "CONTACTS",
+  education: "EVERYONE",
+  location: "EVERYONE",
+};
+
 @Entity("users")
 export class UsersEntity {
   @PrimaryGeneratedColumn()
@@ -59,6 +140,63 @@ export class UsersEntity {
     nullable: true,
   })
   lastSeenAt: Date | null;
+
+  /**
+   * Postal address. Only city/state/country
+   * are shown on the public profile.
+   */
+  @Column({
+    type: "jsonb",
+    nullable: true,
+  })
+  address: UserAddress | null;
+
+  /**
+   * Education history, newest first.
+   */
+  @Column({
+    type: "jsonb",
+    nullable: true,
+  })
+  education: UserEducation[] | null;
+
+  @Column({
+    type: "jsonb",
+    nullable: true,
+  })
+  contact: UserContact | null;
+
+  /**
+   * Who can see each profile section.
+   * Null means DEFAULT_PRIVACY.
+   */
+  @Column({
+    type: "jsonb",
+    nullable: true,
+  })
+  privacy: UserPrivacy | null;
+
+  @Column({
+    type: "jsonb",
+    nullable: true,
+  })
+  groupSettings: UserGroupSettings | null;
+
+  /**
+   * Hidden from search / profiles and cannot be
+   * messaged. Logging in again reactivates.
+   */
+  @Column({
+    type: "boolean",
+    default: false,
+  })
+  isDeactivated: boolean;
+
+  @Column({
+    type: "timestamp",
+    nullable: true,
+  })
+  deactivatedAt: Date | null;
 
   /**
    * Messages sent by this user.

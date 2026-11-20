@@ -1,470 +1,370 @@
 "use client";
 
-import { User } from "@/app/hooks/user/useAllUsers";
-import useCurrentUser from "@/app/hooks/user/useCurrentUser";
-import React, { useMemo } from "react";
-import { motion } from "framer-motion";
+import React, { useEffect, useState } from "react";
+
+import axios from "axios";
+import Link from "next/link";
 
 import {
-  Box,
-  Flex,
-  Text,
   Avatar,
-  Badge,
-  Card,
+  Box,
+  Button,
+  Flex,
   IconButton,
   ScrollArea,
   Separator,
+  Text,
 } from "@radix-ui/themes";
 
 import {
-  BadgeAlert,
-  BadgeCheck,
-  Mail,
-  Phone,
-  Video,
-  BellOff,
-  FolderCheck,
-  UserCheck,
-  Info,
-  ShieldAlert,
   ArrowLeft,
+  BadgeCheck,
+  ExternalLink,
+  Globe,
+  GraduationCap,
+  Info,
+  Link2,
+  Lock,
+  Mail,
+  MapPin,
+  Phone,
 } from "lucide-react";
+
+import API_ENDPOINTS, {
+  GetUserByPublicIdResponse,
+} from "@/app/routes/api";
+
+
+import {
+  formatLocation,
+  formatYears,
+  initialsOf,
+  prettyUrl,
+} from "@/app/lib/profile";
 
 interface RightbarProps {
   receiverId: number | null;
+
+  publicId?: string | null;
+
   onBack?: () => void;
 }
 
-// Empty State
-const EmptyState = React.memo(() => (
-  <Flex
-    direction="column"
-    align="center"
-    justify="center"
-    className="h-full w-full p-6 text-center"
-  >
-    <Box className="p-4 rounded-full bg-slate-100 dark:bg-slate-800/50 mb-3">
-      <Info className="w-7 h-7 text-sky-500 opacity-80" />
-    </Box>
-
-    <Text
-      size="3"
-      weight="bold"
-      className="text-slate-700 dark:text-slate-200"
-    >
-      User Details
-    </Text>
-
-    <Text size="2" color="gray" className="mt-1 max-w-xs">
-      Select a chat from the sidebar to view profile details and shared media.
+const SectionTitle = ({
+  icon,
+  title,
+}: {
+  icon: React.ReactNode;
+  title: string;
+}) => (
+  <Flex align="center" gap="2" mb="2">
+    <span className="text-[var(--gray-11)]">{icon}</span>
+    <Text size="2" weight="bold">
+      {title}
     </Text>
   </Flex>
-));
-
-EmptyState.displayName = "EmptyState";
-
-// Quick Actions
-const ActionButtons = React.memo(() => (
-  <Flex justify="between" align="center" className="pt-1">
-    <IconButton
-      variant="soft"
-      color="sky"
-      radius="full"
-      size="2"
-      className="cursor-pointer"
-    >
-      <Phone className="w-4 h-4" />
-    </IconButton>
-
-    <IconButton
-      variant="soft"
-      color="sky"
-      radius="full"
-      size="2"
-      className="cursor-pointer"
-    >
-      <Video className="w-4 h-4" />
-    </IconButton>
-
-    <IconButton
-      variant="soft"
-      color="gray"
-      radius="full"
-      size="2"
-      className="cursor-pointer"
-    >
-      <Mail className="w-4 h-4" />
-    </IconButton>
-
-    <IconButton
-      variant="soft"
-      color="gray"
-      radius="full"
-      size="2"
-      className="cursor-pointer"
-    >
-      <BellOff className="w-4 h-4" />
-    </IconButton>
-  </Flex>
-));
-
-ActionButtons.displayName = "ActionButtons";
-
-// User Overview
-const UserOverview = React.memo(
-  ({ publicId }: { publicId: string | null }) => (
-    <Card
-      variant="surface"
-      className="p-4 rounded bg-slate-100/40 dark:bg-slate-900/40"
-    >
-      <Text
-        size="2"
-        weight="bold"
-        className="text-slate-800 dark:text-slate-200 block mb-3"
-      >
-        User Overview
-      </Text>
-
-      <Flex direction="column" gap="2.5">
-        <Flex justify="between" align="center">
-          <Text size="2" color="gray">
-            User ID
-          </Text>
-
-          <Text
-            size="2"
-            weight="medium"
-            className="font-mono text-slate-700 dark:text-slate-300"
-          >
-            @{publicId}
-          </Text>
-        </Flex>
-
-        <Flex justify="between" align="center">
-          <Text size="2" color="gray">
-            Status
-          </Text>
-
-          <Flex align="center" gap="1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-
-            <Text
-              size="2"
-              weight="medium"
-              className="text-emerald-500"
-            >
-              Online
-            </Text>
-          </Flex>
-        </Flex>
-      </Flex>
-    </Card>
-  )
 );
 
-UserOverview.displayName = "UserOverview";
+const Row = ({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) => (
+  <Flex align="center" gap="2" className="min-w-0 py-0.5">
+    <span className="shrink-0 text-[var(--gray-10)]">{icon}</span>
+    <Box className="min-w-0 flex-1 truncate text-sm">{children}</Box>
+  </Flex>
+);
 
-// Shared Files
-const SharedFilesSection = React.memo(() => (
-  <Card
-    variant="surface"
-    className="p-4 rounded bg-slate-100/40 dark:bg-slate-900/40"
-  >
-    <Flex align="center" justify="between" className="mb-2">
-      <Flex align="center" gap="2">
-        <FolderCheck className="w-4 h-4 text-sky-500" />
-
-        <Text
-          size="2"
-          weight="bold"
-          className="text-slate-800 dark:text-slate-200"
-        >
-          Shared Files
-        </Text>
-      </Flex>
-
-      <Text
-        size="1"
-        color="sky"
-        className="cursor-pointer hover:underline"
-      >
-        View All
-      </Text>
-    </Flex>
-
-    <Flex
-      direction="column"
-      align="center"
-      justify="center"
-      className="
-        py-6
-        text-center
-        border
-        border-dashed
-        border-[var(--gray-a4)]
-        rounded
-        bg-slate-200/20
-        dark:bg-slate-800/20
-      "
-    >
-      <Text size="2" color="gray">
-        No shared files yet
-      </Text>
-
-      <Text size="1" color="gray" className="opacity-70 mt-0.5">
-        Documents sent in chat will appear here
-      </Text>
-    </Flex>
-  </Card>
-));
-
-SharedFilesSection.displayName = "SharedFilesSection";
+const PrivateNote = () => (
+  <Flex align="center" gap="2">
+    <Lock size={13} color="var(--gray-10)" />
+    <Text size="1" color="gray">
+      Private
+    </Text>
+  </Flex>
+);
 
 const Rightbar: React.FC<RightbarProps> = ({
   receiverId,
+  publicId = null,
   onBack,
 }) => {
-  const user: User | null = useCurrentUser(Number(receiverId));
+  const [profile, setProfile] =
+    useState<GetUserByPublicIdResponse | null>(null);
 
-  const initials = useMemo(() => {
-    if (!user?.fullName) return "U";
+  const [loading, setLoading] = useState(false);
 
-    return user.fullName
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  }, [user?.fullName]);
+  useEffect(() => {
+    if (!publicId) {
+      setProfile(null);
+      return;
+    }
 
-  if (!receiverId || !user) {
-    return <EmptyState />;
+    let cancelled = false;
+
+    setLoading(true);
+
+    axios
+      .post<GetUserByPublicIdResponse | null>(
+        API_ENDPOINTS.GetUserByPublicId,
+        { publicId },
+        { withCredentials: true },
+      )
+      .then((response) => {
+        if (!cancelled) {
+          setProfile(response.data ?? null);
+        }
+      })
+      .catch((error) => {
+        console.log("Failed to load profile:", error);
+
+        if (!cancelled) {
+          setProfile(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [publicId]);
+
+  if (!receiverId) {
+    return (
+      <Flex
+        direction="column"
+        align="center"
+        justify="center"
+        gap="2"
+        className="h-full p-6 text-center"
+      >
+        <Info className="h-7 w-7 text-[var(--gray-9)]" />
+        <Text size="2" color="gray">
+          Select a chat to see who you&apos;re talking to.
+        </Text>
+      </Flex>
+    );
   }
 
-  return (
-    <Flex
-      direction="column"
-      className="
-        h-full
-        w-full
-        bg-slate-50/50
-        dark:bg-slate-950/40
-        backdrop-blur-xl
-        border-l
-        border-[var(--gray-a4)]
+  const location = formatLocation(profile?.location);
+  const education = profile?.education ?? [];
+  const socials = profile?.contact?.socials ?? [];
+  const website = profile?.contact?.website;
 
-        /* Desktop */
-        md:static
-        md:h-full
-        md:w-full
-      "
-    >
-      {/* =====================================================
-          MOBILE HEADER (Hidden on desktop via md:hidden)
-          ===================================================== */}
-      <div className="block md:hidden shrink-0 border-b border-[var(--gray-a4)] backdrop-blur">
-        <Flex align="center" gap="2" className="h-14 px-3">
+  const hasContact =
+    Boolean(profile?.email) ||
+    Boolean(profile?.phone) ||
+    Boolean(website) ||
+    socials.length > 0;
+
+  return (
+    <Flex direction="column" className="h-full w-full">
+      {onBack && (
+        <Flex
+          align="center"
+          gap="2"
+          className="h-14 shrink-0 border-b border-[var(--gray-a4)] px-3 md:hidden"
+        >
           <IconButton
             variant="ghost"
             color="gray"
-            size="2"
             radius="full"
-            onClick={() => {
-              onBack?.();
-            }}
-            className="cursor-pointer"
+            aria-label="Back to chat"
+            onClick={onBack}
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="h-5 w-5" />
           </IconButton>
 
-          <Text
-            size="3"
-            weight="bold"
-            className="text-slate-900 dark:text-slate-100"
-          >
-            User Info
+          <Text size="3" weight="bold">
+            Profile
           </Text>
         </Flex>
-      </div>
+      )}
 
-      {/* =====================================================
-          CONTENT
-          ===================================================== */}
-      <ScrollArea
-        type="hover"
-        scrollbars="vertical"
-        className="min-h-0 flex-1"
-      >
-        <Box p="4" className="space-y-4">
+      <ScrollArea type="hover" scrollbars="vertical" className="min-h-0 flex-1">
+        {loading && !profile ? (
+          <Box p="4">
+            <Text size="2" color="gray">
+              Loading…
+            </Text>
+          </Box>
+        ) : !profile ? (
+          <Box p="4">
+            <Text size="2" color="gray">
+              Profile unavailable.
+            </Text>
+          </Box>
+        ) : (
+          <Flex direction="column" gap="4" p="4">
+            {/* IDENTITY */}
 
-          {/* Main User Profile */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            <Card
-              variant="surface"
-              className="
-                p-4
-                rounded
-                bg-slate-100/40
-                dark:bg-slate-900/40
-                backdrop-blur-md
-              "
-            >
-              <Flex
-                direction="column"
-                align="center"
-                justify="center"
-                className="text-center py-2"
-              >
-                <Box className="relative mb-3">
-                  <Avatar
-                    size="6"
-                    radius="full"
-                    fallback={initials}
-                    color="sky"
-                    variant="soft"
-                    className="ring-2 ring-sky-500/30"
+            <Flex direction="column" align="center" gap="1" className="text-center">
+              <Avatar
+                size="6"
+                radius="full"
+                color="sky"
+                variant="soft"
+                fallback={initialsOf(profile.fullName)}
+                mb="2"
+              />
+
+              <Flex align="center" gap="1">
+                <Text size="4" weight="bold">
+                  {profile.fullName}
+                </Text>
+
+                {profile.isEmailVerified && (
+                  <BadgeCheck
+                    className="h-4 w-4 shrink-0 text-emerald-500"
+                    aria-label="Verified"
                   />
+                )}
+              </Flex>
 
-                  <span
-                    className="
-                      absolute
-                      bottom-0
-                      right-0
-                      w-3.5
-                      h-3.5
-                      bg-emerald-500
-                      border-2
-                      border-slate-900
-                      rounded-full
-                    "
-                  />
-                </Box>
+              <Text size="2" color="gray">
+                @{profile.publicId}
+              </Text>
 
-                <Flex
-                  align="center"
-                  gap="1.5"
-                  className="mb-0.5"
-                >
-                  <Text
-                    size="4"
-                    weight="bold"
-                    className="text-slate-900 dark:text-slate-100"
-                  >
-                    {user.fullName || "User Profile"}
+              {(profile.blockedByMe || profile.blockedMe) && (
+                <Text size="1" color="red">
+                  {profile.blockedByMe ? "You blocked this person" : "Unavailable"}
+                </Text>
+              )}
+
+              {location && (
+                <Flex align="center" gap="1">
+                  <MapPin size={13} color="var(--gray-10)" />
+                  <Text size="1" color="gray">
+                    {location}
                   </Text>
-
-                  {user.isEmailVerified ? (
-                    <BadgeCheck className="w-5 h-5 text-emerald-500 shrink-0" />
-                  ) : (
-                    <BadgeAlert className="w-5 h-5 text-rose-500 shrink-0" />
-                  )}
                 </Flex>
+              )}
 
-                <Text
-                  size="2"
-                  color="gray"
-                  className="truncate max-w-[220px] mb-2"
-                >
-                  {user.publicId}
-                </Text>
-
-                <Flex gap="2" align="center" className="mt-1">
-                  <Badge
-                    color={user.isEmailVerified ? "green" : "amber"}
-                    variant="soft"
-                    size="1"
-                  >
-                    {user.isEmailVerified
-                      ? "Verified Account"
-                      : "Unverified"}
-                  </Badge>
-
-                  {user.publicId && (
-                    <Badge
-                      color="sky"
-                      variant="surface"
-                      size="1"
-                      className="capitalize"
-                    >
-                      {user.publicId}
-                    </Badge>
-                  )}
-                </Flex>
-              </Flex>
-
-              <Separator size="4" className="my-3 opacity-50" />
-
-              <ActionButtons />
-            </Card>
-          </motion.div>
-
-          <UserOverview publicId={user.publicId} />
-
-          <SharedFilesSection />
-
-          {/* Options */}
-          <Card
-            variant="surface"
-            className="
-              p-3
-              rounded
-              bg-slate-100/40
-              dark:bg-slate-900/40
-            "
-          >
-            <Flex direction="column" gap="2">
-              <Flex
-                align="center"
-                gap="2.5"
-                className="
-                  p-2
-                  rounded
-                  hover:bg-slate-200/50
-                  dark:hover:bg-slate-800/50
-                  cursor-pointer
-                  transition-colors
-                "
-              >
-                <UserCheck className="w-4 h-4 text-slate-500" />
-
-                <Text
-                  size="2"
-                  className="text-slate-700 dark:text-slate-300"
-                >
-                  Contact Information
-                </Text>
-              </Flex>
-
-              <Flex
-                align="center"
-                gap="2.5"
-                className="
-                  p-2
-                  rounded
-                  hover:bg-rose-500/10
-                  cursor-pointer
-                  transition-colors
-                  text-rose-500
-                "
-              >
-                <ShieldAlert className="w-4 h-4" />
-
-                <Text size="2" weight="medium">
-                  Report or Block User
-                </Text>
-              </Flex>
+              <Button variant="soft" size="2" mt="2" asChild>
+                <Link href={`/${encodeURIComponent(profile.publicId)}`}>
+                  <ExternalLink size={14} />
+                  View full profile
+                </Link>
+              </Button>
             </Flex>
-          </Card>
 
-        </Box>
+            <Separator size="4" />
+
+            {/* CONTACT */}
+
+            <Box>
+              <SectionTitle icon={<Phone size={15} />} title="Contact" />
+
+              {profile.hidden.contact ? (
+                <PrivateNote />
+              ) : !hasContact ? (
+                <Text size="1" color="gray">
+                  Nothing shared.
+                </Text>
+              ) : (
+                <Flex direction="column" gap="1">
+                  {profile.email && (
+                    <Row icon={<Mail size={14} />}>
+                      <a href={`mailto:${profile.email}`} className="hover:underline">
+                        {profile.email}
+                      </a>
+                    </Row>
+                  )}
+
+                  {profile.phone && (
+                    <Row icon={<Phone size={14} />}>
+                      <a href={`tel:${profile.phone}`} className="hover:underline">
+                        {profile.phone}
+                      </a>
+                    </Row>
+                  )}
+
+                  {website && (
+                    <Row icon={<Globe size={14} />}>
+                      <a
+                        href={website}
+                        target="_blank"
+                        rel="noopener noreferrer nofollow"
+                        className="text-[var(--accent-11)] hover:underline"
+                      >
+                        {prettyUrl(website)}
+                      </a>
+                    </Row>
+                  )}
+
+                  {socials.map((social) => (
+                    <Row
+                      key={`${social.platform}-${social.url}`}
+                      icon={<Link2 size={14} />}
+                    >
+                      <a
+                        href={social.url}
+                        target="_blank"
+                        rel="noopener noreferrer nofollow"
+                        className="text-[var(--accent-11)] hover:underline"
+                      >
+                        {social.platform}
+                      </a>
+                    </Row>
+                  ))}
+                </Flex>
+              )}
+            </Box>
+
+            <Separator size="4" />
+
+            {/* EDUCATION */}
+
+            <Box>
+              <SectionTitle
+                icon={<GraduationCap size={15} />}
+                title="Education"
+              />
+
+              {profile.hidden.education ? (
+                <PrivateNote />
+              ) : education.length === 0 ? (
+                <Text size="1" color="gray">
+                  Nothing shared.
+                </Text>
+              ) : (
+                <Flex direction="column" gap="2">
+                  {education.map((item, index) => {
+                    const years = formatYears(
+                      item.startYear,
+                      item.endYear,
+                      item.current,
+                    );
+
+                    return (
+                      <Box key={`${item.institution}-${index}`}>
+                        <Text size="2" weight="medium" as="div">
+                          {item.institution}
+                        </Text>
+
+                        <Text size="1" color="gray" as="div">
+                          {[item.degree, item.fieldOfStudy, years]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </Text>
+                      </Box>
+                    );
+                  })}
+                </Flex>
+              )}
+            </Box>
+          </Flex>
+        )}
       </ScrollArea>
     </Flex>
   );
 };
 
-export default React.memo(Rightbar);
+export default Rightbar;

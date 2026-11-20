@@ -29,12 +29,14 @@ import {
   Check,
   CheckCheck,
   MessageSquare,
-  Paperclip,
+  MoreVertical,
   Pencil,
   Reply,
   Send,
+  ShieldBan,
   SmilePlus,
   Trash2,
+  Users,
   X,
 } from "lucide-react";
 
@@ -48,6 +50,7 @@ import {
   Badge,
   Box,
   Button,
+  DropdownMenu,
   Flex,
   IconButton,
   Text,
@@ -55,10 +58,18 @@ import {
 } from "@radix-ui/themes";
 
 import API_ENDPOINTS, {
+  BlockStatus,
   GetConversationRequest,
   GetConversationResponse,
+  GroupDetails,
   SendMessageRequest,
 } from "@/app/routes/api";
+
+import Link from "next/link";
+import { toast } from "sonner";
+
+import { getErrorMessage } from "@/app/lib/apiError";
+import useConfirm from "../../shared/useConfirm";
 
 /* ============================================================
    TYPES
@@ -81,6 +92,7 @@ export interface ChatMessage {
   conversationId: number;
   senderId: number;
   message: string;
+  type?: string;
   status: string;
   createdAt: string;
   editedAt?: string | null;
@@ -220,6 +232,7 @@ const upgradeStatus = (
 
 export interface ConversationUser {
   userId: number;
+  isDeactivated?: boolean;
   fullName?: string;
   email?: string;
   publicId?: string;
@@ -234,6 +247,21 @@ interface MiddlebarProps {
   conversationId: number | null;
 
   conversationUser: ConversationUser | null;
+
+  conversationType?: "DIRECT" | "GROUP";
+
+  conversationName?: string | null;
+
+  /**
+   * Loaded by this component for GROUP
+   * conversations and lifted to the parent.
+   */
+  group?: GroupDetails | null;
+
+  onGroupChange?: (group: GroupDetails) => void;
+
+  /** The signed-in user's profile is deactivated. */
+  selfDeactivated?: boolean;
 
   onBack?: () => void;
 
@@ -393,6 +421,11 @@ const normalizeMessage = (
   createdAt:
     message.createdAt,
 
+  type:
+    message.type === "SYSTEM"
+      ? "SYSTEM"
+      : "TEXT",
+
   editedAt:
     message.editedAt ?? null,
 
@@ -486,9 +519,17 @@ const Middlebar: React.FC<
   senderId,
   conversationId,
   conversationUser,
+  conversationType = "DIRECT",
+  conversationName = null,
+  group = null,
+  onGroupChange,
+  selfDeactivated = false,
   onBack,
   onOpenProfile,
 }) => {
+  const isGroup =
+    conversationType === "GROUP";
+
   /* ==========================================================
      STATE
   ========================================================== */
@@ -543,10 +584,17 @@ const Middlebar: React.FC<
     setPendingDelete,
   ] = useState<ChatMessage | null>(null);
 
+  /**
+   * Users currently typing here (one for a
+   * direct chat, several in a group).
+   */
   const [
-    partnerTyping,
-    setPartnerTyping,
-  ] = useState(false);
+    typingUserIds,
+    setTypingUserIds,
+  ] = useState<number[]>([]);
+
+  const partnerTyping =
+    typingUserIds.length > 0;
 
   const [
     presence,
@@ -576,6 +624,30 @@ const Middlebar: React.FC<
     showScrollDown,
     setShowScrollDown,
   ] = useState(false);
+
+  /**
+   * DIRECT only: either side blocked.
+   */
+  const [
+    blockStatus,
+    setBlockStatus,
+  ] = useState<BlockStatus>({
+    blockedByMe: false,
+    blockedMe: false,
+  });
+
+  const [
+    confirmDeleteChat,
+    setConfirmDeleteChat,
+  ] = useState(false);
+
+  const [
+    chatActionBusy,
+    setChatActionBusy,
+  ] = useState(false);
+
+  const { confirm, confirmDialog } =
+    useConfirm();
 
   /**
    * Re-render once a minute so
@@ -656,7 +728,9 @@ const Middlebar: React.FC<
 
   const partnerIdRef =
     useRef<number | null>(
-      conversationUser?.userId ?? null,
+      isGroup
+        ? null
+        : conversationUser?.userId ?? null,
     );
 
   useEffect(() => {
@@ -665,9 +739,10 @@ const Middlebar: React.FC<
   }, [senderId]);
 
   useEffect(() => {
-    partnerIdRef.current =
-      conversationUser?.userId ?? null;
-  }, [conversationUser?.userId]);
+    partnerIdRef.current = isGroup
+      ? null
+      : conversationUser?.userId ?? null;
+  }, [conversationUser?.userId, isGroup]);
 
   /**
    * Outgoing typing state.
@@ -681,12 +756,22 @@ const Middlebar: React.FC<
     > | null>(null);
 
   /**
-   * Incoming typing safety timeout.
+   * Incoming typing safety timeouts, per user.
    */
-  const partnerTypingTimerRef =
-    useRef<ReturnType<
-      typeof setTimeout
-    > | null>(null);
+  const typingTimersRef = useRef(
+    new Map<
+      number,
+      ReturnType<typeof setTimeout>
+    >(),
+  );
+
+  const onGroupChangeRef =
+    useRef(onGroupChange);
+
+  useEffect(() => {
+    onGroupChangeRef.current =
+      onGroupChange;
+  }, [onGroupChange]);
 
   /* ==========================================================
      SELECTED USER
@@ -1259,6 +1344,31 @@ const Middlebar: React.FC<
     socketRef.current =
       socket;
 
+    const stopTypingFor = (
+      typingUserId: number,
+    ) => {
+      const timer =
+        typingTimersRef.current.get(
+          typingUserId,
+        );
+
+      if (timer) {
+        clearTimeout(timer);
+
+        typingTimersRef.current.delete(
+          typingUserId,
+        );
+      }
+
+      setTypingUserIds((previous) =>
+        previous.includes(typingUserId)
+          ? previous.filter(
+              (id) => id !== typingUserId,
+            )
+          : previous,
+      );
+    };
+
     /* ========================================================
        CONNECT
     ======================================================== */
@@ -1455,7 +1565,9 @@ const Middlebar: React.FC<
           normalizedMessage.senderId !==
           senderIdRef.current
         ) {
-          setPartnerTyping(false);
+          stopTypingFor(
+            normalizedMessage.senderId,
+          );
 
           if (
             typeof document ===
@@ -1616,26 +1728,52 @@ const Middlebar: React.FC<
         return;
       }
 
-      if (
-        partnerTypingTimerRef.current
-      ) {
-        clearTimeout(
-          partnerTypingTimerRef.current,
-        );
-
-        partnerTypingTimerRef.current =
-          null;
-      }
-
-      setPartnerTyping(
-        Boolean(data.isTyping),
+      const typingUserId = Number(
+        data.userId,
       );
 
-      if (data.isTyping) {
-        partnerTypingTimerRef.current =
-          setTimeout(() => {
-            setPartnerTyping(false);
-          }, TYPING_DISPLAY_TIMEOUT_MS);
+      if (!data.isTyping) {
+        stopTypingFor(typingUserId);
+        return;
+      }
+
+      const timers =
+        typingTimersRef.current;
+
+      const existing =
+        timers.get(typingUserId);
+
+      if (existing) {
+        clearTimeout(existing);
+      }
+
+      timers.set(
+        typingUserId,
+        setTimeout(() => {
+          stopTypingFor(typingUserId);
+        }, TYPING_DISPLAY_TIMEOUT_MS),
+      );
+
+      setTypingUserIds((previous) =>
+        previous.includes(typingUserId)
+          ? previous
+          : [...previous, typingUserId],
+      );
+    };
+
+    /* ========================================================
+       GROUP UPDATES
+    ======================================================== */
+
+    const handleGroupUpdated = (
+      data: GroupDetails,
+    ) => {
+      if (
+        Number(data?.conversationId) ===
+          numericConversationId &&
+        Array.isArray(data?.members)
+      ) {
+        onGroupChangeRef.current?.(data);
       }
     };
 
@@ -1665,7 +1803,9 @@ const Middlebar: React.FC<
         });
 
         if (!data.isOnline) {
-          setPartnerTyping(false);
+          stopTypingFor(
+            Number(data.userId),
+          );
         }
       };
 
@@ -1789,6 +1929,32 @@ const Middlebar: React.FC<
       handlePresenceUpdate,
     );
 
+    socket.on(
+      "group_updated",
+      handleGroupUpdated,
+    );
+
+    const handleBlockUpdated = (data: {
+      userId: number;
+      blockedByMe: boolean;
+      blockedMe: boolean;
+    }) => {
+      if (
+        Number(data?.userId) ===
+        partnerIdRef.current
+      ) {
+        setBlockStatus({
+          blockedByMe: Boolean(data.blockedByMe),
+          blockedMe: Boolean(data.blockedMe),
+        });
+      }
+    };
+
+    socket.on(
+      "block_updated",
+      handleBlockUpdated,
+    );
+
     /* ========================================================
        CLEANUP
     ======================================================== */
@@ -1868,21 +2034,26 @@ const Middlebar: React.FC<
         handlePresenceUpdate,
       );
 
+      socket.off(
+        "group_updated",
+        handleGroupUpdated,
+      );
+
+      socket.off(
+        "block_updated",
+        handleBlockUpdated,
+      );
+
       document.removeEventListener(
         "visibilitychange",
         handleVisibilityChange,
       );
 
-      if (
-        partnerTypingTimerRef.current
-      ) {
-        clearTimeout(
-          partnerTypingTimerRef.current,
-        );
-
-        partnerTypingTimerRef.current =
-          null;
+      for (const timer of typingTimersRef.current.values()) {
+        clearTimeout(timer);
       }
+
+      typingTimersRef.current.clear();
 
       if (
         typingIdleTimerRef.current
@@ -1897,7 +2068,7 @@ const Middlebar: React.FC<
 
       typingSentRef.current = false;
 
-      setPartnerTyping(false);
+      setTypingUserIds([]);
 
       setPresence(null);
 
@@ -1972,6 +2143,43 @@ const Middlebar: React.FC<
     chats,
     loading,
     loadingOlder,
+    partnerTyping,
+  ]);
+
+  /* ==========================================================
+     KEEP OPEN MENUS VISIBLE
+  ========================================================== */
+
+  useEffect(() => {
+    const id =
+      reactionPickerFor ??
+      activeMessageId;
+
+    if (id === null) {
+      return;
+    }
+
+    /**
+     * Menus open below the message; for the
+     * newest messages scroll so they aren't
+     * hidden behind the composer.
+     */
+    requestAnimationFrame(() => {
+      const element =
+        document.getElementById(
+          reactionPickerFor !== null
+            ? `reaction-picker-${id}`
+            : `message-actions-${id}`,
+        );
+
+      element?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+  }, [
+    reactionPickerFor,
+    activeMessageId,
   ]);
 
   /* ==========================================================
@@ -2213,9 +2421,10 @@ const Middlebar: React.FC<
           if (
             response?.success === false
           ) {
-            console.log(
-              "Reaction failed:",
-              response.message,
+            toast.error(
+              typeof response.message === "string"
+                ? response.message
+                : "Couldn't react to that message.",
             );
           }
         },
@@ -2246,9 +2455,10 @@ const Middlebar: React.FC<
           if (
             response?.success === false
           ) {
-            console.log(
-              "Delete failed:",
-              response.message,
+            toast.error(
+              typeof response.message === "string"
+                ? response.message
+                : "Couldn't unsend that message.",
             );
           }
         },
@@ -2316,17 +2526,279 @@ const Middlebar: React.FC<
       });
     }, []);
 
+  /**
+   * userId -> member, for sender names in groups.
+   */
+  const membersById = useMemo(
+    () =>
+      new Map(
+        (group?.conversationId ===
+        Number(conversationId)
+          ? group.members
+          : []
+        ).map((member) => [
+          member.userId,
+          member,
+        ]),
+      ),
+    [group, conversationId],
+  );
+
   const getSenderLabel = useCallback(
     (id: number) =>
       id === Number(senderId)
         ? "You"
-        : conversationUser?.fullName ||
-          "User",
+        : isGroup
+          ? membersById.get(id)?.fullName ||
+            "Former member"
+          : conversationUser?.fullName ||
+            "User",
     [
       senderId,
+      isGroup,
+      membersById,
       conversationUser?.fullName,
     ],
   );
+
+  /**
+   * Group permission: may I send messages?
+   */
+  const myMember = membersById.get(
+    Number(senderId),
+  );
+
+  const canSendMessages =
+    !isGroup ||
+    !group ||
+    myMember?.role === "ADMIN" ||
+    group.permissions.sendMessages === "ALL";
+
+  const typingLabel = useMemo(() => {
+    if (typingUserIds.length === 0) {
+      return null;
+    }
+
+    if (!isGroup) {
+      return "typing…";
+    }
+
+    const names = typingUserIds.map(
+      (id) =>
+        membersById
+          .get(id)
+          ?.fullName.split(" ")[0] ||
+        "Someone",
+    );
+
+    if (names.length === 1) {
+      return `${names[0]} is typing…`;
+    }
+
+    if (names.length === 2) {
+      return `${names[0]} and ${names[1]} are typing…`;
+    }
+
+    return `${names.length} people are typing…`;
+  }, [typingUserIds, isGroup, membersById]);
+
+  /* ==========================================================
+     BLOCK STATUS (direct chats)
+  ========================================================== */
+
+  const partnerUserId = isGroup
+    ? null
+    : conversationUser?.userId ?? null;
+
+  useEffect(() => {
+    setBlockStatus({
+      blockedByMe: false,
+      blockedMe: false,
+    });
+
+    if (!partnerUserId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    axios
+      .post<BlockStatus>(
+        API_ENDPOINTS.BlockStatus,
+        { userId: partnerUserId },
+        { withCredentials: true },
+      )
+      .then((response) => {
+        if (!cancelled && response.data) {
+          setBlockStatus(response.data);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [partnerUserId, conversationId]);
+
+  const toggleBlock = useCallback(async () => {
+    if (!partnerUserId) {
+      return;
+    }
+
+    const blocking = !blockStatus.blockedByMe;
+
+    const name =
+      conversationUser?.fullName ?? "this person";
+
+    const ok = await confirm(
+      blocking
+        ? {
+            title: `Block ${name}?`,
+            consequences: [
+              "Neither of you can message the other.",
+              "They can't add you to groups or see your private details.",
+              "Your chat history stays; you can unblock any time.",
+            ],
+            confirmLabel: "Block",
+            danger: true,
+          }
+        : {
+            title: `Unblock ${name}?`,
+            consequences: [
+              "You can message each other again.",
+              "Your privacy settings apply to them as usual.",
+            ],
+            confirmLabel: "Unblock",
+          },
+    );
+
+    if (!ok) {
+      return;
+    }
+
+    try {
+      setChatActionBusy(true);
+
+      const response = await axios.post<BlockStatus>(
+        blocking
+          ? API_ENDPOINTS.BlockUser
+          : API_ENDPOINTS.UnblockUser,
+        { userId: partnerUserId },
+        { withCredentials: true },
+      );
+
+      setBlockStatus(response.data);
+
+      toast.success(
+        blocking
+          ? `${conversationUser?.fullName ?? "User"} is blocked.`
+          : `${conversationUser?.fullName ?? "User"} is unblocked.`,
+      );
+    } catch (error) {
+      toast.error(
+        getErrorMessage(
+          error,
+          blocking ? "Couldn't block." : "Couldn't unblock.",
+        ),
+      );
+    } finally {
+      setChatActionBusy(false);
+    }
+  }, [
+    partnerUserId,
+    blockStatus.blockedByMe,
+    conversationUser?.fullName,
+    confirm,
+  ]);
+
+  /**
+   * Delete for me: the sidebar's
+   * "conversation_deleted" event closes this view.
+   */
+  const deleteChat = useCallback(async () => {
+    const numericConversationId =
+      Number(conversationId);
+
+    if (!Number.isFinite(numericConversationId)) {
+      return;
+    }
+
+    try {
+      setChatActionBusy(true);
+
+      await axios.post(
+        API_ENDPOINTS.DeleteChat,
+        { conversationId: numericConversationId },
+        { withCredentials: true },
+      );
+
+      setConfirmDeleteChat(false);
+
+      toast.success("Chat deleted.");
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, "Couldn't delete the chat."),
+      );
+    } finally {
+      setChatActionBusy(false);
+    }
+  }, [conversationId]);
+
+  const isBlocked =
+    !isGroup &&
+    (blockStatus.blockedByMe ||
+      blockStatus.blockedMe);
+
+  /* ==========================================================
+     LOAD GROUP DETAILS
+  ========================================================== */
+
+  useEffect(() => {
+    const numericConversationId =
+      Number(conversationId);
+
+    if (
+      !isGroup ||
+      !Number.isFinite(
+        numericConversationId,
+      ) ||
+      numericConversationId <= 0
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    axios
+      .post<GroupDetails>(
+        API_ENDPOINTS.GroupDetails,
+        {
+          conversationId:
+            numericConversationId,
+        },
+        { withCredentials: true },
+      )
+      .then((response) => {
+        if (
+          !cancelled &&
+          response.data?.members
+        ) {
+          onGroupChangeRef.current?.(
+            response.data,
+          );
+        }
+      })
+      .catch((error) => {
+        console.log(
+          "Failed to load group:",
+          error,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, isGroup]);
 
   /* ==========================================================
      SEND MESSAGE
@@ -2398,10 +2870,11 @@ const Middlebar: React.FC<
               if (
                 response?.success === false
               ) {
-                console.log(
-                  "Edit failed:",
-                  response.message,
-                );
+                toast.error(
+              typeof response.message === "string"
+                ? response.message
+                : "Couldn't edit that message.",
+            );
               }
             },
           );
@@ -2458,9 +2931,10 @@ const Middlebar: React.FC<
             response.success ===
               false
           ) {
-            console.log(
-              "Send message failed:",
-              response.message,
+            toast.error(
+              typeof response.message === "string"
+                ? response.message
+                : "Message not sent.",
             );
           }
         },
@@ -2548,7 +3022,8 @@ const Middlebar: React.FC<
               (chat) =>
                 chat.senderId ===
                   Number(senderId) &&
-                !chat.isDeleted,
+                !chat.isDeleted &&
+                chat.type !== "SYSTEM",
             );
 
           if (myLast) {
@@ -2691,6 +3166,67 @@ const Middlebar: React.FC<
               </IconButton>
             )}
 
+            {isGroup ? (
+              <button
+                type="button"
+                onClick={() => onOpenProfile?.()}
+                className="flex min-w-0 cursor-pointer items-center gap-3 text-left"
+                aria-label="Group info"
+              >
+                <Avatar
+                  size="2"
+                  radius="full"
+                  color="indigo"
+                  variant="soft"
+                  fallback={
+                    <Users className="h-4 w-4" />
+                  }
+                />
+
+                <Box className="min-w-0">
+                  <Text
+                    size="3"
+                    weight="bold"
+                    className="
+                      block
+                      max-w-[180px]
+                      truncate
+                      text-slate-800
+                      dark:text-slate-100
+                      sm:max-w-[300px]
+                    "
+                  >
+                    {group?.name ||
+                      conversationName ||
+                      "Group"}
+                  </Text>
+
+                  {typingLabel ? (
+                    <Text
+                      size="1"
+                      className="block truncate font-medium text-sky-500"
+                    >
+                      {typingLabel}
+                    </Text>
+                  ) : (
+                    <Text
+                      size="1"
+                      color="gray"
+                      className="block truncate"
+                    >
+                      {group
+                        ? `${group.members.length} member${
+                            group.members.length === 1
+                              ? ""
+                              : "s"
+                          }`
+                        : "Group"}
+                    </Text>
+                  )}
+                </Box>
+              </button>
+            ) : (
+            <>
             <span className="relative inline-flex shrink-0">
               <Avatar
                 size="2"
@@ -2733,21 +3269,45 @@ const Middlebar: React.FC<
                 align="center"
                 gap="1.5"
               >
-                <Text
-                  size="3"
-                  mr="2"
-                  weight="bold"
-                  className="
-                    max-w-[180px]
-                    truncate
-                    text-slate-800
-                    dark:text-slate-100
-                    sm:max-w-[300px]
-                  "
-                >
-                  {selectedUser?.fullName ||
-                    "Conversation"}
-                </Text>
+                {selectedUser?.publicId ? (
+                  <Tooltip content="View profile">
+                    <Link
+                      href={`/${encodeURIComponent(
+                        selectedUser.publicId,
+                      )}`}
+                      className="
+                        mr-2
+                        max-w-[180px]
+                        truncate
+                        text-base
+                        font-bold
+                        text-slate-800
+                        hover:underline
+                        dark:text-slate-100
+                        sm:max-w-[300px]
+                      "
+                    >
+                      {selectedUser.fullName ||
+                        "Conversation"}
+                    </Link>
+                  </Tooltip>
+                ) : (
+                  <Text
+                    size="3"
+                    mr="2"
+                    weight="bold"
+                    className="
+                      max-w-[180px]
+                      truncate
+                      text-slate-800
+                      dark:text-slate-100
+                      sm:max-w-[300px]
+                    "
+                  >
+                    {selectedUser?.fullName ||
+                      "Conversation"}
+                  </Text>
+                )}
 
                 {selectedUser?.isEmailVerified ? (
                   <Tooltip content="This user is verified.">
@@ -2818,6 +3378,8 @@ const Middlebar: React.FC<
                 )
               )}
             </Box>
+            </>
+            )}
           </Flex>
 
           {/* =================================================
@@ -2828,46 +3390,97 @@ const Middlebar: React.FC<
             align="center"
             gap="2"
           >
-            {/* Profile / Info */}
+            {/* Connection problems only */}
 
-            <IconButton
-              variant="ghost"
-              color="gray"
-              onClick={() =>
-                onOpenProfile?.()
-              }
-              className="
-                shrink-0
-                cursor-pointer
-              "
-            >
-              <AiOutlineInfoCircle
-                className="
-                  h-5
-                  w-5
-                "
-              />
-            </IconButton>
+            {!socketConnected && (
+              <Badge
+                color={socketError ? "red" : "gray"}
+                variant="soft"
+                size="1"
+              >
+                {socketError ? "Offline" : "Connecting…"}
+              </Badge>
+            )}
 
-            {/* Connection status */}
+            {/* Info (mobile: opens profile / group panel) */}
 
-            <Badge
-              color={
-                socketConnected
-                  ? "green"
-                  : socketError
-                    ? "red"
-                    : "gray"
-              }
-              variant="soft"
-              size="1"
-            >
-              {socketConnected
-                ? "Connected"
-                : socketError
-                  ? "Offline"
-                  : "Connecting"}
-            </Badge>
+            {onOpenProfile && (
+              <IconButton
+                variant="ghost"
+                color="gray"
+                aria-label={isGroup ? "Group info" : "Profile"}
+                onClick={() => onOpenProfile()}
+                className="shrink-0 cursor-pointer md:hidden"
+              >
+                <AiOutlineInfoCircle className="h-5 w-5" />
+              </IconButton>
+            )}
+
+            {/* Chat actions */}
+
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger>
+                <IconButton
+                  variant="ghost"
+                  color="gray"
+                  aria-label="Chat options"
+                  className="shrink-0 cursor-pointer"
+                  disabled={chatActionBusy}
+                >
+                  <MoreVertical className="h-5 w-5" />
+                </IconButton>
+              </DropdownMenu.Trigger>
+
+              <DropdownMenu.Content align="end">
+                {!isGroup && selectedUser?.publicId && (
+                  <DropdownMenu.Item asChild>
+                    <Link
+                      href={`/${encodeURIComponent(
+                        selectedUser.publicId,
+                      )}`}
+                    >
+                      View profile
+                    </Link>
+                  </DropdownMenu.Item>
+                )}
+
+                {isGroup && onOpenProfile && (
+                  <DropdownMenu.Item
+                    onSelect={() => onOpenProfile()}
+                  >
+                    Group info
+                  </DropdownMenu.Item>
+                )}
+
+                {!isGroup && partnerUserId && (
+                  <DropdownMenu.Item
+                    color={
+                      blockStatus.blockedByMe
+                        ? undefined
+                        : "red"
+                    }
+                    onSelect={() => {
+                      void toggleBlock();
+                    }}
+                  >
+                    {blockStatus.blockedByMe
+                      ? "Unblock"
+                      : "Block"}
+                  </DropdownMenu.Item>
+                )}
+
+                <DropdownMenu.Separator />
+
+                <DropdownMenu.Item
+                  color="red"
+                  onSelect={() =>
+                    setConfirmDeleteChat(true)
+                  }
+                >
+                  Delete chat
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
           </Flex>
         </Flex>
       </Box>
@@ -3031,6 +3644,76 @@ const Middlebar: React.FC<
                     chat.createdAt,
                   );
 
+                /* ------------------------------------------
+                   SYSTEM NOTICE ("Alice added Bob")
+                ------------------------------------------ */
+
+                if (chat.type === "SYSTEM") {
+                  return (
+                    <motion.div
+                      key={chat.messageId}
+                      id={`message-${chat.messageId}`}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="my-3 flex flex-col items-center gap-1"
+                    >
+                      {datePart && (
+                        <Text
+                          size="1"
+                          color="gray"
+                          className="text-[11px] opacity-70"
+                        >
+                          {datePart}
+                        </Text>
+                      )}
+
+                      <Text
+                        size="1"
+                        className="
+                          max-w-[85%]
+                          rounded-full
+                          bg-[var(--gray-a3)]
+                          px-3
+                          py-1
+                          text-center
+                          text-[var(--gray-a11)]
+                        "
+                      >
+                        {chat.message}
+                        <span className="ml-1.5 text-[10px] opacity-60">
+                          {timePart}
+                        </span>
+                      </Text>
+                    </motion.div>
+                  );
+                }
+
+                /* ------------------------------------------
+                   GROUP: show who sent it (first message
+                   of each run from the same person)
+                ------------------------------------------ */
+
+                const previousChat =
+                  index > 0
+                    ? chats[index - 1]
+                    : null;
+
+                const showSenderName =
+                  isGroup &&
+                  !isMine &&
+                  (!previousChat ||
+                    previousChat.type ===
+                      "SYSTEM" ||
+                    previousChat.senderId !==
+                      chat.senderId);
+
+                const senderMember =
+                  membersById.get(
+                    Number(chat.senderId),
+                  );
+
                 const isDeleted =
                   Boolean(chat.isDeleted);
 
@@ -3125,9 +3808,11 @@ const Middlebar: React.FC<
 
                           {!isDeleted && (
                             <div
+                              id={`message-actions-${chat.messageId}`}
                               className={`
                                 absolute
-                                -top-4
+                                top-full
+                                mt-0.5
                                 z-20
                                 flex
                                 items-center
@@ -3218,9 +3903,10 @@ const Middlebar: React.FC<
                             {reactionPickerFor ===
                               chat.messageId && (
                               <motion.div
+                                id={`reaction-picker-${chat.messageId}`}
                                 initial={{
                                   opacity: 0,
-                                  y: 6,
+                                  y: -6,
                                   scale: 0.9,
                                 }}
                                 animate={{
@@ -3237,7 +3923,8 @@ const Middlebar: React.FC<
                                 }}
                                 className={`
                                   absolute
-                                  -top-14
+                                  top-full
+                                  mt-8
                                   z-30
                                   flex
                                   gap-1
@@ -3286,6 +3973,29 @@ const Middlebar: React.FC<
                               </motion.div>
                             )}
                           </AnimatePresence>
+
+                          {/* SENDER NAME (groups) */}
+
+                          {showSenderName && (
+                            senderMember ? (
+                              <Link
+                                href={`/${encodeURIComponent(
+                                  senderMember.publicId,
+                                )}`}
+                                className="mb-0.5 px-1 text-xs font-semibold text-sky-600 hover:underline dark:text-sky-400"
+                              >
+                                {senderMember.fullName}
+                              </Link>
+                            ) : (
+                              <Text
+                                size="1"
+                                color="gray"
+                                className="mb-0.5 px-1"
+                              >
+                                Former member
+                              </Text>
+                            )
+                          )}
 
                           {/* MESSAGE */}
 
@@ -3704,6 +4414,58 @@ const Middlebar: React.FC<
           border-[var(--gray-a4)]
         "
       >
+        {selfDeactivated ||
+        (!isGroup && conversationUser?.isDeactivated) ? (
+          <Flex
+            align="center"
+            justify="center"
+            className="rounded bg-[var(--gray-a2)] px-3 py-3"
+          >
+            <Text size="2" color="gray">
+              {selfDeactivated
+                ? "Your profile is deactivated. Activate it to send messages."
+                : `${conversationUser?.fullName ?? "This person"}'s account is deactivated.`}
+            </Text>
+          </Flex>
+        ) : isBlocked ? (
+          <Flex
+            align="center"
+            justify="center"
+            gap="3"
+            wrap="wrap"
+            className="rounded bg-[var(--gray-a2)] px-3 py-3"
+          >
+            <ShieldBan className="h-4 w-4 text-[var(--gray-10)]" />
+
+            <Text size="2" color="gray">
+              {blockStatus.blockedByMe
+                ? `You blocked ${selectedUser?.fullName ?? "this person"}.`
+                : "You can't reply to this conversation."}
+            </Text>
+
+            {blockStatus.blockedByMe && (
+              <Button
+                size="1"
+                variant="soft"
+                onClick={() => void toggleBlock()}
+                loading={chatActionBusy}
+              >
+                Unblock
+              </Button>
+            )}
+          </Flex>
+        ) : !canSendMessages ? (
+          <Flex
+            align="center"
+            justify="center"
+            className="rounded bg-[var(--gray-a2)] px-3 py-3"
+          >
+            <Text size="2" color="gray">
+              Only admins can send messages in this group.
+            </Text>
+          </Flex>
+        ) : (
+        <>
         {(replyingTo ||
           editingMessage) && (
           <Flex
@@ -3780,29 +4542,6 @@ const Middlebar: React.FC<
             focus-within:bg-[var(--gray-a1)]
           "
         >
-          {/* Attachment */}
-
-          <IconButton
-            type="button"
-            size="1"
-            variant="ghost"
-            color="gray"
-            disabled
-            className="
-              !rounded-lg
-              !p-1.5
-              shrink-0
-              text-[var(--gray-a8)]
-            "
-          >
-            <Paperclip
-              className="
-                h-4
-                w-4
-              "
-            />
-          </IconButton>
-
           {/* Textarea */}
 
           <textarea
@@ -3910,7 +4649,50 @@ const Middlebar: React.FC<
             )}
           </IconButton>
         </Flex>
+        </>
+        )}
       </Box>
+
+      {confirmDialog}
+
+      {/* ====================================================
+          DELETE CHAT (for me)
+      ==================================================== */}
+
+      <AlertDialog.Root
+        open={confirmDeleteChat}
+        onOpenChange={setConfirmDeleteChat}
+      >
+        <AlertDialog.Content maxWidth="420px">
+          <AlertDialog.Title>
+            Delete this chat?
+          </AlertDialog.Title>
+
+          <AlertDialog.Description size="2">
+            The chat is removed from your list and its
+            history is cleared for you only.{" "}
+            {isGroup
+              ? "You stay in the group, and new messages will appear again."
+              : "The other person keeps their copy. New messages start a fresh chat."}
+          </AlertDialog.Description>
+
+          <Flex gap="3" mt="4" justify="end">
+            <AlertDialog.Cancel>
+              <Button variant="soft" color="gray">
+                Cancel
+              </Button>
+            </AlertDialog.Cancel>
+
+            <Button
+              color="red"
+              onClick={() => void deleteChat()}
+              loading={chatActionBusy}
+            >
+              Delete chat
+            </Button>
+          </Flex>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
 
       {/* ====================================================
           UNSEND CONFIRMATION

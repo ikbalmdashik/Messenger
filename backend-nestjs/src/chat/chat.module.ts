@@ -4,6 +4,10 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { ChatService } from "./chat.service";
 import { ChatController } from "./chat.controller";
 import { ChatGateway } from "./chat.getway";
+import { GroupController } from "./group/group.controller";
+import { ChatActionsController } from "./chat-actions.controller";
+import { GroupService } from "./group/group.service";
+import { ConversationEntity } from "./conversation/entities/conversation.entity";
 
 import { ChatMessageEntity } from "./entities/chat.entity";
 import { MessageReactionEntity } from "./entities/message-reaction.entity";
@@ -20,6 +24,7 @@ import { ConversationParticipantEntity } from "./conversation/entities/conversat
       ConversationParticipantEntity,
       MessageReactionEntity,
       UsersEntity,
+      ConversationEntity,
     ]),
 
     AuthModule,
@@ -29,11 +34,14 @@ import { ConversationParticipantEntity } from "./conversation/entities/conversat
 
   controllers: [
     ChatController,
+    GroupController,
+    ChatActionsController,
   ],
 
   providers: [
     ChatService,
     ChatGateway,
+    GroupService,
   ],
 
   exports: [

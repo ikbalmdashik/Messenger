@@ -13,6 +13,10 @@ import { UsersEntity } from "@/auth/entities/auth.entity";
 import { ConversationEntity } from "../conversation/entities/conversation.entity";
 import { MessageReactionEntity } from "./message-reaction.entity";
 
+export type MessageType =
+  | "TEXT"
+  | "SYSTEM";
+
 @Entity("chat_messages")
 @Index(
   ["conversationId", "createdAt"],
@@ -55,6 +59,17 @@ export class ChatMessageEntity {
 
   @Column()
   message: string;
+
+  /**
+   * TEXT   -> normal user message
+   * SYSTEM -> "Alice added Bob" style notices
+   */
+  @Column({
+    type: "varchar",
+    length: 20,
+    default: "TEXT",
+  })
+  type: MessageType;
 
   /**
    * sent      -> saved, recipient offline

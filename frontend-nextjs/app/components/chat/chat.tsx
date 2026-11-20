@@ -8,7 +8,15 @@ import {
 
 import axios from "axios";
 
-import ChatSidebar from "./sidebar/sidebar";
+import ChatSidebar, {
+  ConversationMeta,
+} from "./sidebar/sidebar";
+import GroupPanel from "./group/GroupPanel";
+import useVerification from "../settings/useVerification";
+import useConfirm from "../shared/useConfirm";
+import { getErrorMessage } from "@/app/lib/apiError";
+import { toast } from "sonner";
+import { GroupDetails } from "@/app/routes/api";
 import Middlebar from "./middlebar/middlebar";
 import Rightbar from "./rightbar/rightbar";
 
@@ -48,6 +56,7 @@ import {
 
 export interface ConversationUser {
   userId: number;
+  isDeactivated?: boolean;
   fullName?: string;
   email?: string;
   publicId?: string;
@@ -115,6 +124,57 @@ const ChatComponent = () => {
   const [conversationUser, setConversationUser] =
     useState<ConversationUser | null>(null);
 
+  const [conversationMeta, setConversationMeta] =
+    useState<ConversationMeta>({
+      type: "DIRECT",
+    });
+
+  /**
+   * Shared by the chat view (header, sender
+   * names, permissions) and the group panel.
+   */
+  const [groupDetails, setGroupDetails] =
+    useState<GroupDetails | null>(null);
+
+  const isGroup =
+    conversationMeta.type === "GROUP";
+
+  const handleGroupChange = useCallback(
+    (group: GroupDetails) => {
+      setGroupDetails((current) =>
+        current === null ||
+        current.conversationId ===
+          group.conversationId
+          ? group
+          : current,
+      );
+
+      setConversationMeta((meta) =>
+        meta.type === "GROUP"
+          ? { ...meta, name: group.name }
+          : meta,
+      );
+    },
+    [],
+  );
+
+  const handleConversationRemoved =
+    useCallback(
+      (removedId: number) => {
+        if (conversationId !== removedId) {
+          return;
+        }
+
+        setConversationId(null);
+        setConversationUser(null);
+        setConversationMeta({ type: "DIRECT" });
+        setGroupDetails(null);
+        setShowChatMobile(false);
+        setShowMobileProfile(false);
+      },
+      [conversationId],
+    );
+
 
   /* ==========================================================
      MOBILE
@@ -145,6 +205,65 @@ const ChatComponent = () => {
 
 
   const router = useRouter();
+
+  /* ==========================================================
+     DEACTIVATED ACCOUNT
+  ========================================================== */
+
+  const [selfDeactivated, setSelfDeactivated] =
+    useState(false);
+
+  const [activating, setActivating] =
+    useState(false);
+
+  const { verify, verificationModal } =
+    useVerification(userEmail);
+
+  const { confirm, confirmDialog } =
+    useConfirm();
+
+  const handleActivate = useCallback(async () => {
+    const ok = await confirm({
+      title: "Activate your profile?",
+      changes: [
+        { label: "Profile status", from: "Deactivated", to: "Active" },
+      ],
+      consequences: [
+        "Your profile appears in search and on profile pages again.",
+        "You can send and receive messages again.",
+      ],
+      confirmLabel: "Continue",
+    });
+
+    if (!ok) {
+      return;
+    }
+
+    const verificationToken = await verify();
+
+    if (!verificationToken) {
+      return;
+    }
+
+    try {
+      setActivating(true);
+
+      await axios.post(
+        API_ENDPOINTS.ReactivateMyAccount,
+        { verificationToken },
+        { withCredentials: true },
+      );
+
+      setSelfDeactivated(false);
+      toast.success("Your profile is active again.");
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, "Couldn't activate your profile."),
+      );
+    } finally {
+      setActivating(false);
+    }
+  }, [confirm, verify]);
 
 
   /* ==========================================================
@@ -218,6 +337,8 @@ const ChatComponent = () => {
 
         setUserEmail(user.email || "");
 
+        setSelfDeactivated(user.isDeactivated === true);
+
         /* -----------------------------------------------
            EMAIL VERIFICATION
         ------------------------------------------------ */
@@ -231,7 +352,7 @@ const ChatComponent = () => {
           return;
         }
 
-        console.error(
+        console.log(
           "Authentication failed:",
           error
         );
@@ -583,6 +704,7 @@ const ChatComponent = () => {
     selectedConversationId: number,
     selectedUser:
       ConversationUser | null,
+    meta?: ConversationMeta,
   ) => {
 
     if (
@@ -602,6 +724,17 @@ const ChatComponent = () => {
     setConversationUser(
       selectedUser
     );
+
+    setConversationMeta(
+      meta ?? { type: "DIRECT" }
+    );
+
+    if (
+      selectedConversationId !==
+      conversationId
+    ) {
+      setGroupDetails(null);
+    }
 
 
     /* -----------------------------------------------
@@ -624,7 +757,8 @@ const ChatComponent = () => {
 
       if (
         conversationUser !==
-        null
+          null ||
+        isGroup
       ) {
 
         setShowMobileProfile(
@@ -1017,13 +1151,45 @@ const ChatComponent = () => {
   ========================================================== */
 
   return (
-    <div className="h-[100dvh] overflow-hidden transition-colors">
+    <div className="flex h-[100dvh] flex-col overflow-hidden transition-colors">
+
+      {/* ====================================================
+          DEACTIVATED BANNER
+      ==================================================== */}
+
+      {selfDeactivated && (
+        <Flex
+          align="center"
+          justify="center"
+          gap="3"
+          wrap="wrap"
+          px="4"
+          py="2"
+          className="shrink-0 border-b border-amber-500/30 bg-amber-500/10"
+        >
+          <Text size="2">
+            Your profile is deactivated. You can read chats but
+            can&apos;t send messages.
+          </Text>
+
+          <Button
+            size="1"
+            onClick={() => void handleActivate()}
+            loading={activating}
+          >
+            Activate
+          </Button>
+        </Flex>
+      )}
+
+      {confirmDialog}
+      {verificationModal}
 
       {/* ====================================================
           MOBILE
       ==================================================== */}
 
-      <div className="md:hidden h-full relative">
+      <div className="md:hidden min-h-0 flex-1 relative">
 
         {/* -----------------------------------------------
             SIDEBAR
@@ -1037,6 +1203,9 @@ const ChatComponent = () => {
             }
             onSelect={
               handleSelect
+            }
+            onConversationRemoved={
+              handleConversationRemoved
             }
           />
 
@@ -1060,6 +1229,17 @@ const ChatComponent = () => {
               conversationUser={
                 conversationUser
               }
+              conversationType={
+                conversationMeta.type
+              }
+              conversationName={
+                conversationMeta.name ?? null
+              }
+              group={groupDetails}
+              onGroupChange={
+                handleGroupChange
+              }
+              selfDeactivated={selfDeactivated}
               onBack={() => {
 
                 setShowChatMobile(
@@ -1086,9 +1266,32 @@ const ChatComponent = () => {
         {showChatMobile &&
           showMobileProfile && (
 
+            isGroup ? (
+              <GroupPanel
+                group={groupDetails}
+                currentUserId={senderId}
+                onGroupChange={
+                  handleGroupChange
+                }
+                onLeft={() =>
+                  handleConversationRemoved(
+                    conversationId ?? -1
+                  )
+                }
+                onBack={() => {
+                  setShowMobileProfile(
+                    false
+                  );
+                }}
+              />
+            ) : (
             <Rightbar
               receiverId={
                 conversationUser?.userId ??
+                null
+              }
+              publicId={
+                conversationUser?.publicId ??
                 null
               }
               onBack={() => {
@@ -1099,6 +1302,7 @@ const ChatComponent = () => {
 
               }}
             />
+            )
 
           )}
 
@@ -1109,7 +1313,7 @@ const ChatComponent = () => {
           DESKTOP
       ==================================================== */}
 
-      <div className="hidden md:flex h-[100dvh] w-full overflow-hidden">
+      <div className="hidden md:flex min-h-0 flex-1 w-full overflow-hidden">
 
         {/* ==================================================
             SIDEBAR
@@ -1129,6 +1333,9 @@ const ChatComponent = () => {
             }
             onSelect={
               handleSelect
+            }
+            onConversationRemoved={
+              handleConversationRemoved
             }
           />
 
@@ -1171,6 +1378,17 @@ const ChatComponent = () => {
             conversationUser={
               conversationUser
             }
+            conversationType={
+              conversationMeta.type
+            }
+            conversationName={
+              conversationMeta.name ?? null
+            }
+            group={groupDetails}
+            onGroupChange={
+              handleGroupChange
+            }
+            selfDeactivated={selfDeactivated}
           />
 
         </div>
@@ -1202,17 +1420,36 @@ const ChatComponent = () => {
           }}
         >
 
-          <Rightbar
-            receiverId={
-              conversationUser?.userId ??
-              null
-            }
-            onBack={() => {
-              setShowMobileProfile(
-                false
-              );
-            }}
-          />
+          {isGroup ? (
+            <GroupPanel
+              group={groupDetails}
+              currentUserId={senderId}
+              onGroupChange={
+                handleGroupChange
+              }
+              onLeft={() =>
+                handleConversationRemoved(
+                  conversationId ?? -1
+                )
+              }
+            />
+          ) : (
+            <Rightbar
+              receiverId={
+                conversationUser?.userId ??
+                null
+              }
+              publicId={
+                conversationUser?.publicId ??
+                null
+              }
+              onBack={() => {
+                setShowMobileProfile(
+                  false
+                );
+              }}
+            />
+          )}
 
         </div>
 

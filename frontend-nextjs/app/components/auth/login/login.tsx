@@ -47,6 +47,7 @@ import {
     PasswordModal,
     ContactOption,
 } from "@/app/components/auth/PasswordModal";
+import SavedAccounts from "./SavedAccounts";
 
 
 type FormData = {
@@ -182,6 +183,19 @@ const MultiStepLogin = () => {
         let mounted = true;
 
         const checkAuthentication = async () => {
+            /*
+             * "Add another account": stay on the login
+             * page even though a session exists. The new
+             * login is added to the saved accounts.
+             */
+            if (
+                new URLSearchParams(window.location.search).get(
+                    "addAccount"
+                ) === "1"
+            ) {
+                return;
+            }
+
             try {
                 const response = await axios.post(
                     API_ENDPOINTS.GetUserByToken,
@@ -631,6 +645,24 @@ const MultiStepLogin = () => {
 
                         </Card>
                     </form>
+
+
+                    {/* SAVED ACCOUNTS */}
+
+                    <SavedAccounts
+                        onNeedsPassword={(savedEmail) => {
+                            setValue("email", savedEmail);
+                            setEmail(savedEmail);
+                            setNotification(null);
+                            setIsPasswordAlertOpen(true);
+                        }}
+                        onError={(message) =>
+                            setNotification({
+                                type: "error",
+                                message,
+                            })
+                        }
+                    />
 
 
                     {/* PASSWORD & OTP MODAL */}

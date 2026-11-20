@@ -68,6 +68,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       );
     }
 
+    void this.authService
+      .TouchSession(dbToken)
+      .catch(() => undefined);
+
     // ==========================================
     // 3. Return authenticated user
     // ==========================================

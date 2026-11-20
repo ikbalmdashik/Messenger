@@ -20,6 +20,7 @@ import { ConversationService } from "./conversation/conversation.service";
 import { ConversationParticipantEntity } from "./conversation/entities/conversation-participant.entity";
 
 import { UsersEntity } from "@/auth/entities/auth.entity";
+import { AuthService } from "@/auth/auth.service";
 
 export const MAX_MESSAGE_LENGTH = 5000;
 
@@ -46,6 +47,7 @@ export interface SerializedMessage {
   conversationId: number;
   senderId: number;
   message: string;
+  type: string;
   status: string;
   createdAt: Date;
   editedAt: Date | null;
@@ -72,6 +74,8 @@ export class ChatService {
     private readonly userRepository: Repository<UsersEntity>,
 
     private readonly conversationService: ConversationService,
+
+    private readonly authService: AuthService,
 
     private readonly dataSource: DataSource,
   ) {}
@@ -174,6 +178,7 @@ export class ChatService {
         message: message.isDeleted
           ? ""
           : message.message,
+        type: message.type ?? "TEXT",
         status: message.status,
         createdAt: message.createdAt,
         editedAt:
@@ -264,6 +269,14 @@ export class ChatService {
       normalizedUserId,
     );
 
+    const me =
+      await this.participantRepository.findOne({
+        where: {
+          conversationId: normalizedConversationId,
+          userId: normalizedUserId,
+        },
+      });
+
     const query = this.messageRepository
       .createQueryBuilder("chat")
       .where(
@@ -273,6 +286,17 @@ export class ChatService {
             normalizedConversationId,
         },
       );
+
+    /*
+     * "Delete chat" hides everything before that
+     * moment for this user only.
+     */
+    if (me?.clearedAt) {
+      query.andWhere(
+        "chat.createdAt > :clearedAt",
+        { clearedAt: me.clearedAt },
+      );
+    }
 
     const numericLimit = Number(limit);
 
@@ -312,24 +336,6 @@ export class ChatService {
 
     return await this.serializeMessages(
       messages,
-    );
-  }
-
-  /**
-   * Get messages for a conversation after
-   * verifying that the current user is a participant.
-   */
-  async GetMessages(
-    userId: number,
-    conversationId: number,
-    limit?: number,
-    offset?: number,
-  ) {
-    return await this.GetConversation(
-      userId,
-      conversationId,
-      limit,
-      offset,
     );
   }
 
@@ -393,6 +399,16 @@ export class ChatService {
       normalizedUserId,
     );
 
+    if (
+      await this.authService.IsDeactivated(
+        normalizedUserId,
+      )
+    ) {
+      throw new BadRequestException(
+        "Your account is deactivated. Activate it to send messages.",
+      );
+    }
+
     /*
      * A reply must point at a message
      * in the same conversation.
@@ -421,6 +437,7 @@ export class ChatService {
 
       if (
         !replyTarget ||
+        replyTarget.type === "SYSTEM" ||
         replyTarget.conversationId !==
           normalizedConversationId
       ) {
@@ -476,22 +493,57 @@ export class ChatService {
             );
           }
 
-          /*
-           * For DIRECT conversations there should
-           * be one other participant.
-           */
-          const recipientParticipant =
-            participants.find(
+          const conversation =
+            await this.conversationService.getConversationForUser(
+              normalizedConversationId,
+              normalizedUserId,
+            );
+
+          if (conversation.type === "DIRECT") {
+            const other = participants.find(
               (participant) =>
                 Number(participant.userId) !==
                 normalizedUserId,
             );
 
-          if (!recipientParticipant) {
-            throw new BadRequestException(
-              "Recipient not found.",
-            );
+            if (other) {
+              if (
+                await this.authService.IsBlockedEitherWay(
+                  normalizedUserId,
+                  Number(other.userId),
+                )
+              ) {
+                throw new BadRequestException(
+                  "You can't message this person.",
+                );
+              }
+
+              const otherUser =
+                await manager
+                  .getRepository(UsersEntity)
+                  .findOne({
+                    where: { userId: Number(other.userId) },
+                    select: { userId: true, isDeactivated: true },
+                  });
+
+              if (otherUser?.isDeactivated) {
+                throw new BadRequestException(
+                  "This account is deactivated.",
+                );
+              }
+            }
           }
+
+          /*
+           * DIRECT: one other participant.
+           * GROUP:  everyone else.
+           */
+          const recipientParticipants =
+            participants.filter(
+              (participant) =>
+                Number(participant.userId) !==
+                normalizedUserId,
+            );
 
           const chat =
             messageRepository.create({
@@ -525,32 +577,33 @@ export class ChatService {
           senderParticipant.unreadCount = 0;
 
           /*
-           * Recipient now has one more
+           * Every recipient now has one more
            * unread message.
            */
-          recipientParticipant.unreadCount =
-            Number(
-              recipientParticipant.unreadCount ||
-                0,
-            ) + 1;
+          for (const recipient of recipientParticipants) {
+            recipient.unreadCount =
+              Number(recipient.unreadCount || 0) +
+              1;
+
+            // A deleted chat comes back on new activity.
+            recipient.isHidden = false;
+          }
+
+          senderParticipant.isHidden = false;
 
           await participantRepository.save([
             senderParticipant,
-            recipientParticipant,
+            ...recipientParticipants,
           ]);
 
           return {
             savedMessage,
 
-            recipientId: Number(
-              recipientParticipant.userId,
-            ),
-
-            senderUnreadCount:
-              senderParticipant.unreadCount,
-
-            recipientUnreadCount:
-              recipientParticipant.unreadCount,
+            recipientIds:
+              recipientParticipants.map(
+                (participant) =>
+                  Number(participant.userId),
+              ),
           };
         },
       );
@@ -563,14 +616,40 @@ export class ChatService {
 
       senderId: normalizedUserId,
 
-      recipientId: result.recipientId,
-
-      senderUnreadCount:
-        result.senderUnreadCount,
-
-      recipientUnreadCount:
-        result.recipientUnreadCount,
+      recipientIds: result.recipientIds,
     };
+  }
+
+  /**
+   * "Alice added Bob" style notice. Does not
+   * change unread counts.
+   */
+  async CreateSystemMessage(
+    conversationId: number,
+    actorId: number,
+    text: string,
+  ): Promise<SerializedMessage> {
+    await this.participantRepository.update(
+      {
+        conversationId: Number(conversationId),
+        isHidden: true,
+      },
+      { isHidden: false },
+    );
+
+    const saved =
+      await this.messageRepository.save(
+        this.messageRepository.create({
+          conversationId: Number(conversationId),
+          senderId: Number(actorId),
+          message: text.slice(0, 500),
+          type: "SYSTEM",
+          status: "seen",
+          createdAt: new Date(),
+        }),
+      );
+
+    return await this.serializeMessage(saved);
   }
 
   /* ==========================================================
@@ -606,6 +685,12 @@ export class ChatService {
     if (message.isDeleted) {
       throw new BadRequestException(
         "This message was deleted.",
+      );
+    }
+
+    if (message.type === "SYSTEM") {
+      throw new BadRequestException(
+        "System messages can't be changed.",
       );
     }
 
@@ -726,7 +811,11 @@ export class ChatService {
         },
       });
 
-    if (!message || message.isDeleted) {
+    if (
+      !message ||
+      message.isDeleted ||
+      message.type === "SYSTEM"
+    ) {
       throw new NotFoundException(
         "Message not found.",
       );

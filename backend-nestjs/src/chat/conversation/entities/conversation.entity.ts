@@ -15,6 +15,26 @@ export type ConversationType =
   | "DIRECT"
   | "GROUP";
 
+/**
+ * Who may perform an action in a group.
+ */
+export type PermissionLevel =
+  | "ALL"
+  | "ADMINS";
+
+export interface GroupPermissions {
+  addMembers: PermissionLevel;
+  editInfo: PermissionLevel;
+  sendMessages: PermissionLevel;
+}
+
+export const DEFAULT_GROUP_PERMISSIONS: GroupPermissions =
+  {
+    addMembers: "ADMINS",
+    editInfo: "ADMINS",
+    sendMessages: "ALL",
+  };
+
 @Entity("conversations")
 @Index(
   "UQ_conversations_direct_key",
@@ -48,6 +68,28 @@ export class ConversationEntity {
     nullable: true,
   })
   directKey: string | null;
+
+  @Column({
+    type: "varchar",
+    length: 500,
+    nullable: true,
+  })
+  description: string | null;
+
+  @Column({
+    type: "integer",
+    nullable: true,
+  })
+  createdById: number | null;
+
+  /**
+   * GROUP only. Null means defaults.
+   */
+  @Column({
+    type: "jsonb",
+    nullable: true,
+  })
+  permissions: GroupPermissions | null;
 
   @CreateDateColumn()
   createdAt: Date;

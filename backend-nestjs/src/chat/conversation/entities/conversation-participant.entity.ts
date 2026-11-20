@@ -1,5 +1,6 @@
 import {
   Column,
+  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
@@ -10,6 +11,10 @@ import {
 
 import { ConversationEntity } from "./conversation.entity";
 import { UsersEntity } from "@/auth/entities/auth.entity";
+
+export type ParticipantRole =
+  | "ADMIN"
+  | "MEMBER";
 
 @Entity("conversation_participants")
 @Unique(
@@ -42,6 +47,39 @@ export class ConversationParticipantEntity {
     default: 0,
   })
   unreadCount: number;
+
+  /**
+   * Only meaningful for GROUP conversations.
+   */
+  @Column({
+    type: "varchar",
+    length: 20,
+    default: "MEMBER",
+  })
+  role: ParticipantRole;
+
+  @CreateDateColumn()
+  joinedAt: Date;
+
+  /**
+   * "Delete chat" (for me): messages up to this
+   * moment are no longer shown to this user.
+   */
+  @Column({
+    type: "timestamp",
+    nullable: true,
+  })
+  clearedAt: Date | null;
+
+  /**
+   * Hidden from this user's sidebar until the
+   * next new message.
+   */
+  @Column({
+    type: "boolean",
+    default: false,
+  })
+  isHidden: boolean;
 
   @ManyToOne(
     () => ConversationEntity,

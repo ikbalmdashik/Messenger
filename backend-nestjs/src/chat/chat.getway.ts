@@ -20,6 +20,7 @@ import {
 import { CreateChatDto } from "./dto/create-chat.dto";
 
 import { ConversationService } from "./conversation/conversation.service";
+import { canPerform } from "./group/group-permissions";
 
 /**
  * How long a user may have zero sockets
@@ -885,31 +886,8 @@ export class ChatGateway {
 
       /*
        * ======================================
-       * VERIFY PARTICIPATION
+       * VERIFY PARTICIPATION + PERMISSION
        * ======================================
-       */
-      await this.conversationService.getConversationForUser(
-        conversationId,
-        userId,
-      );
-
-      /*
-       * ======================================
-       * SAVE MESSAGE
-       * ======================================
-       *
-       * CreateChat now:
-       *
-       * 1. Saves message.
-       * 2. Finds sender.
-       * 3. Finds recipient.
-       * 4. Increments recipient unreadCount.
-       * 5. Keeps sender unreadCount = 0.
-       */
-      /*
-       * Find the recipient first so the message
-       * can be saved as "delivered" when they
-       * have an active connection.
        */
       const participants =
         await this.conversationService.getParticipants(
@@ -917,21 +895,49 @@ export class ChatGateway {
           userId,
         );
 
-      const otherParticipant =
-        participants.find(
-          (participant) =>
-            Number(participant.userId) !==
-            userId,
-        );
+      const me = participants.find(
+        (participant) =>
+          Number(participant.userId) === userId,
+      );
 
-      const recipientOnline =
-        otherParticipant
-          ? await this.isUserOnline(
-              Number(
-                otherParticipant.userId,
-              ),
-            )
-          : false;
+      const conversation =
+        me?.conversation ??
+        (await this.conversationService.getConversationForUser(
+          conversationId,
+          userId,
+        ));
+
+      if (
+        !canPerform(
+          conversation,
+          me,
+          "sendMessages",
+        )
+      ) {
+        return {
+          success: false,
+          message:
+            "Only admins can send messages in this group.",
+        };
+      }
+
+      /*
+       * "delivered" when any recipient has an
+       * active connection right now.
+       */
+      let anyRecipientOnline = false;
+
+      for (const participant of participants) {
+        if (
+          Number(participant.userId) !== userId &&
+          (await this.isUserOnline(
+            Number(participant.userId),
+          ))
+        ) {
+          anyRecipientOnline = true;
+          break;
+        }
+      }
 
       const result =
         await this.chatService.CreateChat(
@@ -941,7 +947,7 @@ export class ChatGateway {
 
           createChatDto.message.trim(),
 
-          recipientOnline
+          anyRecipientOnline
             ? "delivered"
             : "sent",
 
@@ -949,183 +955,15 @@ export class ChatGateway {
             null,
         );
 
-      /*
-       * CreateChat returns:
-       *
-       * {
-       *   message,
-       *   senderId,
-       *   recipientId,
-       *   senderUnreadCount,
-       *   recipientUnreadCount
-       * }
-       */
-      const savedMessage =
-        result.message;
-
-      const recipientId =
-        Number(
-          result.recipientId,
-        );
-
-      /*
-       * ======================================
-       * CONVERSATION ROOM
-       * ======================================
-       */
-      const conversationRoom =
-        `conversation-${conversationId}`;
-
-      /*
-       * ======================================
-       * SEND ACTUAL MESSAGE
-       * ======================================
-       *
-       * Middlebar already listens for:
-       *
-       * receive_message
-       *
-       * We continue sending only the
-       * saved ChatMessageEntity here.
-       */
-      this.server
-        .to(conversationRoom)
-        .emit(
-          "receive_message",
-          savedMessage,
-        );
-
-      /*
-       * ======================================
-       * GET SIDEBAR DATA
-       * ======================================
-       *
-       * For sender:
-       *
-       * show the recipient.
-       *
-       * For recipient:
-       *
-       * show the sender.
-       */
-      const senderSidebar =
-        await this.conversationService.getConversationSidebarUser(
-          conversationId,
-          userId,
-        );
-
-      const recipientSidebar =
-        await this.conversationService.getConversationSidebarUser(
-          conversationId,
-          recipientId,
-        );
-
-      /*
-       * ======================================
-       * UPDATE SENDER SIDEBAR
-       * ======================================
-       *
-       * Sender's unread count is 0.
-       */
-      if (senderSidebar) {
-        this.server
-          .to(`user:${userId}`)
-          .emit(
-            "conversation_updated",
-            {
-              conversationId,
-
-              userId:
-                senderSidebar.userId,
-
-              fullName:
-                senderSidebar.fullName,
-
-              email:
-                senderSidebar.email,
-
-              publicId:
-                senderSidebar.publicId,
-
-              isEmailVerified:
-                senderSidebar.isEmailVerified,
-
-              lastMessage:
-                savedMessage.message,
-
-              lastMessageAt:
-                savedMessage.createdAt,
-
-              lastMessageSenderId:
-                userId,
-
-              unreadCount:
-                0,
-            },
-          );
-      }
-
-      /*
-       * ======================================
-       * UPDATE RECIPIENT SIDEBAR
-       * ======================================
-       *
-       * recipientSidebar already contains:
-       *
-       * unreadCount
-       *
-       * because getConversationSidebarUser()
-       * reads the recipient's participant row.
-       */
-      if (recipientSidebar) {
-        this.server
-          .to(
-            `user:${recipientId}`,
-          )
-          .emit(
-            "conversation_updated",
-            {
-              conversationId,
-
-              userId:
-                recipientSidebar.userId,
-
-              fullName:
-                recipientSidebar.fullName,
-
-              email:
-                recipientSidebar.email,
-
-              publicId:
-                recipientSidebar.publicId,
-
-              isEmailVerified:
-                recipientSidebar.isEmailVerified,
-
-              lastMessage:
-                savedMessage.message,
-
-              lastMessageAt:
-                savedMessage.createdAt,
-
-              lastMessageSenderId:
-                userId,
-
-              unreadCount:
-                recipientSidebar.unreadCount,
-            },
-          );
-      }
-
-      console.log(
-        `Message sent | User: ${userId} | Recipient: ${recipientId} | Conversation: ${conversationId} | Message: ${savedMessage.messageId} | Recipient unread: ${recipientSidebar?.unreadCount ?? 0}`,
+      await this.broadcastNewMessage(
+        result.message,
       );
 
-      /*
-       * Return the actual saved message
-       * to the sender.
-       */
-      return savedMessage;
+      console.log(
+        `Message sent | User: ${userId} | Conversation: ${conversationId} | Message: ${result.message.messageId}`,
+      );
+
+      return result.message;
     } catch (error) {
       console.error(
         "Send message error:",
@@ -1141,6 +979,87 @@ export class ChatGateway {
             : "Unable to send message.",
       };
     }
+  }
+
+  /**
+   * ==========================================
+   * BROADCAST HELPERS (also used by groups)
+   * ==========================================
+   */
+
+  emitToUsers(
+    userIds: number[],
+    event: string,
+    payload: unknown,
+  ) {
+    if (userIds.length === 0) {
+      return;
+    }
+
+    this.server
+      .to(userIds.map((id) => `user:${id}`))
+      .emit(event, payload);
+  }
+
+  /**
+   * Kick users' sockets out of a conversation
+   * room (e.g. removed from a group).
+   */
+  removeUsersFromConversationRoom(
+    userIds: number[],
+    conversationId: number,
+  ) {
+    for (const id of userIds) {
+      this.server
+        .in(`user:${id}`)
+        .socketsLeave(
+          `conversation-${conversationId}`,
+        );
+    }
+  }
+
+  /**
+   * Refresh every participant's sidebar row.
+   */
+  async emitSidebarUpdates(
+    conversationId: number,
+  ) {
+    const participantIds =
+      await this.conversationService.getParticipantIds(
+        conversationId,
+      );
+
+    for (const participantId of participantIds) {
+      const item =
+        await this.conversationService.getSidebarItem(
+          conversationId,
+          participantId,
+        );
+
+      if (item) {
+        this.server
+          .to(`user:${participantId}`)
+          .emit("conversation_updated", item);
+      }
+    }
+  }
+
+  /**
+   * Deliver a new message to the open chat views
+   * and update everyone's sidebar.
+   */
+  async broadcastNewMessage(
+    message: SerializedMessage,
+  ) {
+    this.server
+      .to(
+        `conversation-${message.conversationId}`,
+      )
+      .emit("receive_message", message);
+
+    await this.emitSidebarUpdates(
+      message.conversationId,
+    );
   }
 
   /**
@@ -1287,6 +1206,23 @@ export class ChatGateway {
   }
 
   /**
+   * After an edit/unsend the sidebar preview may
+   * show the old text; refresh it.
+   */
+  private refreshSidebarsQuietly(
+    conversationId: number,
+  ) {
+    this.emitSidebarUpdates(
+      conversationId,
+    ).catch((error) =>
+      console.error(
+        "Sidebar refresh error:",
+        error,
+      ),
+    );
+  }
+
+  /**
    * ==========================================
    * EDIT MESSAGE
    * ==========================================
@@ -1321,6 +1257,10 @@ export class ChatGateway {
         );
 
       this.emitMessageUpdated(updated);
+
+      this.refreshSidebarsQuietly(
+        updated.conversationId,
+      );
 
       return {
         success: true,
@@ -1367,6 +1307,10 @@ export class ChatGateway {
         );
 
       this.emitMessageUpdated(deleted);
+
+      this.refreshSidebarsQuietly(
+        deleted.conversationId,
+      );
 
       return {
         success: true,

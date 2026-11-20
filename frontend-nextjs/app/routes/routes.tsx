@@ -3,7 +3,7 @@ const Routes = {
     Login: "/pages/auth/login",
     Register: "/pages/auth/register",
     Chat: "/pages/chat",
-    Dashboard: "/pages/dashboard",
+    Settings: "/pages/settings",
     Validation: "/pages/validation",
     SecureSession: "/pages/secure-session",
     NotFOund: "/pages/404",

@@ -31,12 +31,14 @@ import {
 import {
   Loader2,
   MessageCircle,
-  Plus,
   Search,
   UserCheck,
+  Users,
 } from "lucide-react";
 
-import ProfileDialog from "../myProfile/profile";
+import CreateGroupDialog from "../group/CreateGroupDialog";
+import ProfileMenu from "../account/ProfileMenu";
+import { PENDING_CONVERSATION_KEY } from "@/app/lib/apiError";
 
 import API_ENDPOINTS, {
   ConversationResponse,
@@ -52,6 +54,7 @@ import API_ENDPOINTS, {
 
 export interface ConversationUser {
   userId: number;
+  isDeactivated?: boolean;
 
   fullName?: string;
 
@@ -66,19 +69,48 @@ export interface ConversationUser {
   bio?: string | null;
 }
 
+export interface ConversationMeta {
+  type: "DIRECT" | "GROUP";
+  name?: string | null;
+}
+
 interface ChatSidebarProps {
   senderId: number;
 
   onSelect: (
     conversationId: number,
     selectedUser: ConversationUser | null,
+    meta?: ConversationMeta,
+  ) => void;
+
+  /**
+   * Called when the current user leaves or is
+   * removed from a group.
+   */
+  onConversationRemoved?: (
+    conversationId: number,
   ) => void;
 }
 
 interface ChatConversation {
   conversationId: number;
 
+  /**
+   * Other user for DIRECT; 0 for GROUP.
+   */
   userId: number;
+
+  type?: "DIRECT" | "GROUP";
+
+  name?: string | null;
+
+  memberCount?: number;
+
+  lastMessageSenderName?: string | null;
+
+  lastMessageType?: string | null;
+
+  isDeactivated?: boolean;
 
   fullName?: string;
 
@@ -120,7 +152,19 @@ interface ChatUser {
 interface ConversationUpdatedEvent {
   conversationId: number;
 
-  userId: number;
+  userId: number | null;
+
+  type?: "DIRECT" | "GROUP";
+
+  name?: string | null;
+
+  memberCount?: number;
+
+  lastMessageSenderName?: string | null;
+
+  lastMessageType?: string | null;
+
+  isDeactivated?: boolean;
 
   fullName?: string;
 
@@ -166,6 +210,7 @@ const ChatSidebar: React.FC<
 > = ({
   senderId,
   onSelect,
+  onConversationRemoved,
 }) => {
   /* ==========================================================
      STATE
@@ -203,6 +248,11 @@ const ChatSidebar: React.FC<
     setConversationsLoading,
   ] = useState(false);
 
+  const [
+    groupDialogOpen,
+    setGroupDialogOpen,
+  ] = useState(false);
+
   /**
    * Contacts with at least one active
    * connection right now.
@@ -226,6 +276,26 @@ const ChatSidebar: React.FC<
 
   const conversationUserIdsRef =
     useRef<number[]>([]);
+
+  /**
+   * Conversation to open once the list
+   * has loaded (see PENDING_CONVERSATION_KEY).
+   */
+  const pendingOpenRef =
+    useRef<ChatConversation | null>(
+      null,
+    );
+
+  const selectedConversationIdRef =
+    useRef<number | null>(null);
+
+  const onConversationRemovedRef =
+    useRef(onConversationRemoved);
+
+  useEffect(() => {
+    onConversationRemovedRef.current =
+      onConversationRemoved;
+  }, [onConversationRemoved]);
 
   const socketRef =
     useRef<Socket | null>(null);
@@ -274,24 +344,6 @@ const ChatSidebar: React.FC<
       isPublicIdSearch,
       trimmedSearchQuery,
     ]);
-
-  /* ==========================================================
-     FOCUS SEARCH
-  ========================================================== */
-
-  const handleFocusSearch =
-    useCallback(() => {
-      /*
-       * Focus immediately.
-       */
-      searchInputRef.current?.focus();
-
-      /*
-       * Also select existing text
-       * so typing replaces it naturally.
-       */
-      searchInputRef.current?.select();
-    }, []);
 
   /* ==========================================================
      LOAD CONVERSATIONS
@@ -344,8 +396,37 @@ const ChatSidebar: React.FC<
 
                   userId:
                     Number(
-                      conversation.userId,
-                    ),
+                      conversation.userId ?? 0,
+                    ) || 0,
+
+                  ...(() => {
+                    const extra =
+                      conversation as ConversationResponse & {
+                        type?: "DIRECT" | "GROUP";
+                        name?: string | null;
+                        memberCount?: number;
+                        lastMessageSenderName?: string | null;
+                        lastMessageType?: string | null;
+                        isDeactivated?: boolean;
+                      };
+
+                    return {
+                      isDeactivated: Boolean(
+                        extra.isDeactivated,
+                      ),
+                      type:
+                        extra.type ?? "DIRECT",
+                      name: extra.name ?? null,
+                      memberCount:
+                        extra.memberCount,
+                      lastMessageSenderName:
+                        extra.lastMessageSenderName ??
+                        null,
+                      lastMessageType:
+                        extra.lastMessageType ??
+                        null,
+                    };
+                  })(),
 
                   fullName:
                     conversation.fullName,
@@ -414,14 +495,54 @@ const ChatSidebar: React.FC<
                   Number.isFinite(
                     conversation.conversationId,
                   ) &&
-                  Number.isFinite(
-                    conversation.userId,
-                  ),
+                  (conversation.type ===
+                    "GROUP" ||
+                    conversation.userId > 0),
               );
 
           setConversations(
             normalized,
           );
+
+          /*
+           * Opened from a public profile's
+           * "Message" button.
+           */
+          let pendingId: number | null = null;
+
+          try {
+            const stored =
+              sessionStorage.getItem(
+                PENDING_CONVERSATION_KEY,
+              );
+
+            if (stored) {
+              sessionStorage.removeItem(
+                PENDING_CONVERSATION_KEY,
+              );
+
+              pendingId = Number(stored);
+            }
+          } catch {
+            pendingId = null;
+          }
+
+          if (
+            pendingId !== null &&
+            Number.isFinite(pendingId)
+          ) {
+            const target =
+              normalized.find(
+                (conversation) =>
+                  conversation.conversationId ===
+                  pendingId,
+              );
+
+            if (target) {
+              pendingOpenRef.current =
+                target;
+            }
+          }
         } catch (error) {
           if (
             requestId !==
@@ -651,9 +772,13 @@ const ChatSidebar: React.FC<
         return;
       }
 
+      const isGroup =
+        data?.type === "GROUP";
+
       if (
-        !Number.isFinite(userId) ||
-        userId <= 0
+        !isGroup &&
+        (!Number.isFinite(userId) ||
+          userId <= 0)
       ) {
         return;
       }
@@ -663,6 +788,7 @@ const ChatSidebar: React.FC<
        * to the current authenticated user.
        */
       if (
+        !isGroup &&
         userId ===
         numericSenderId
       ) {
@@ -702,7 +828,34 @@ const ChatSidebar: React.FC<
             {
               conversationId,
 
-              userId,
+              userId: isGroup
+                ? 0
+                : userId,
+
+              type: isGroup
+                ? "GROUP"
+                : "DIRECT",
+
+              name:
+                data.name ??
+                existingConversation?.name ??
+                null,
+
+              memberCount:
+                data.memberCount ??
+                existingConversation?.memberCount,
+
+              lastMessageSenderName:
+                data.lastMessageSenderName ??
+                null,
+
+              lastMessageType:
+                data.lastMessageType ??
+                null,
+
+              isDeactivated:
+                data.isDeactivated ??
+                existingConversation?.isDeactivated,
 
               fullName:
                 data.fullName ??
@@ -905,6 +1058,60 @@ const ChatSidebar: React.FC<
       handlePresenceUpdate,
     );
 
+    /* ========================================================
+       GROUP MEMBERSHIP CHANGES
+    ======================================================== */
+
+    const handleConversationsChanged =
+      () => {
+        void loadConversations();
+      };
+
+    const handleGroupRemoved = (data: {
+      conversationId: number;
+    }) => {
+      const removedId = Number(
+        data?.conversationId,
+      );
+
+      setConversations((previous) =>
+        previous.filter(
+          (conversation) =>
+            conversation.conversationId !==
+            removedId,
+        ),
+      );
+
+      if (
+        selectedConversationIdRef.current ===
+        removedId
+      ) {
+        setSelectedConversationId(null);
+      }
+
+      onConversationRemovedRef.current?.(
+        removedId,
+      );
+    };
+
+    socket.on(
+      "conversations_changed",
+      handleConversationsChanged,
+    );
+
+    socket.on(
+      "group_removed",
+      handleGroupRemoved,
+    );
+
+    /*
+     * "Delete chat" (for me) from any tab.
+     */
+    socket.on(
+      "conversation_deleted",
+      handleGroupRemoved,
+    );
+
     socket.on(
       "connect",
       requestPresence,
@@ -924,6 +1131,21 @@ const ChatSidebar: React.FC<
       socket.off(
         "presence_update",
         handlePresenceUpdate,
+      );
+
+      socket.off(
+        "conversations_changed",
+        handleConversationsChanged,
+      );
+
+      socket.off(
+        "group_removed",
+        handleGroupRemoved,
+      );
+
+      socket.off(
+        "conversation_deleted",
+        handleGroupRemoved,
       );
 
       socket.off("connect");
@@ -957,7 +1179,9 @@ const ChatSidebar: React.FC<
     .map((conversation) =>
       Number(conversation.userId),
     )
-    .filter((id) => Number.isFinite(id))
+    .filter(
+      (id) => Number.isFinite(id) && id > 0,
+    )
     .sort((a, b) => a - b)
     .join(",");
 
@@ -1212,9 +1436,12 @@ const ChatSidebar: React.FC<
           (
             conversation,
           ) => {
-            const fullName =
-              conversation.fullName
-                ?.toLowerCase() ??
+            const fullName = (
+              conversation.type === "GROUP"
+                ? conversation.name
+                : conversation.fullName
+            )
+              ?.toLowerCase() ??
               "";
 
             const email =
@@ -1282,6 +1509,34 @@ const ChatSidebar: React.FC<
           return;
         }
 
+        if (
+          conversation.type === "GROUP"
+        ) {
+          setSelectedConversationId(
+            conversationId,
+          );
+
+          setConversations((previous) =>
+            previous.map((item) =>
+              Number(item.conversationId) ===
+              conversationId
+                ? { ...item, unreadCount: 0 }
+                : item,
+            ),
+          );
+
+          markConversationAsRead(
+            conversationId,
+          );
+
+          onSelect(conversationId, null, {
+            type: "GROUP",
+            name: conversation.name,
+          });
+
+          return;
+        }
+
         const userId =
           Number(
             conversation.userId,
@@ -1317,6 +1572,9 @@ const ChatSidebar: React.FC<
 
             bio:
               conversation.bio,
+
+            isDeactivated:
+              conversation.isDeactivated,
           };
 
         setSelectedConversationId(
@@ -1352,6 +1610,7 @@ const ChatSidebar: React.FC<
         onSelect(
           conversationId,
           selectedUser,
+          { type: "DIRECT" },
         );
       },
       [
@@ -1359,6 +1618,61 @@ const ChatSidebar: React.FC<
         markConversationAsRead,
       ],
     );
+
+  useEffect(() => {
+    selectedConversationIdRef.current =
+      selectedConversationId;
+  }, [selectedConversationId]);
+
+  /*
+   * Open a conversation requested by the
+   * public profile page.
+   */
+  useEffect(() => {
+    const target = pendingOpenRef.current;
+
+    if (!target) {
+      return;
+    }
+
+    pendingOpenRef.current = null;
+
+    handleSelectConversation(target);
+  }, [
+    conversations,
+    handleSelectConversation,
+  ]);
+
+  const handleGroupCreated = useCallback(
+    (group: {
+      conversationId: number;
+      name: string;
+      members: unknown[];
+    }) => {
+      const item: ChatConversation = {
+        conversationId: group.conversationId,
+        userId: 0,
+        type: "GROUP",
+        name: group.name,
+        memberCount: group.members.length,
+        unreadCount: 0,
+        lastMessage: null,
+        lastMessageAt: new Date().toISOString(),
+      };
+
+      setConversations((previous) => [
+        item,
+        ...previous.filter(
+          (conversation) =>
+            conversation.conversationId !==
+            group.conversationId,
+        ),
+      ]);
+
+      handleSelectConversation(item);
+    },
+    [handleSelectConversation],
+  );
 
   /* ==========================================================
      SELECT SEARCH RESULT
@@ -1509,56 +1823,25 @@ const ChatSidebar: React.FC<
           align="center"
           justify="between"
         >
-          <Flex
-            align="center"
-            gap="3"
+          <Text
+            size="5"
+            weight="bold"
+            className="text-gray-900 dark:text-white"
           >
-            <Box className="relative">
-              <Avatar
-                size="3"
-                radius="full"
-                fallback="C"
-              />
+            Chats
+          </Text>
 
-              <Box className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-green-500 dark:border-gray-900" />
-            </Box>
+          <Flex gap="2" align="center">
+            <ProfileMenu
+              onNewGroup={() => setGroupDialogOpen(true)}
+            />
 
-            <Box>
-              <Text
-                size="3"
-                weight="bold"
-                className="text-gray-900 dark:text-white"
-              >
-                Chats
-              </Text>
-
-              <Text
-                size="1"
-                className="block text-gray-500 dark:text-gray-400"
-              >
-                Messages
-              </Text>
-            </Box>
-          </Flex>
-
-          <Flex gap="2">
-            {/* ==================================================
-                PLUS BUTTON
-            ================================================== */}
-
-            <Button
-              variant="soft"
-              size="2"
-              onClick={
-                handleFocusSearch
-              }
-              className="cursor-pointer"
-              aria-label="Search people"
-            >
-              <Plus size={17} />
-            </Button>
-
-            <ProfileDialog />
+            <CreateGroupDialog
+              open={groupDialogOpen}
+              onOpenChange={setGroupDialogOpen}
+              currentUserId={Number(senderId)}
+              onCreated={handleGroupCreated}
+            />
           </Flex>
         </Flex>
       </Box>
@@ -1784,6 +2067,28 @@ const ChatSidebar: React.FC<
                     conversation.unreadCount >
                     0;
 
+                  const isGroup =
+                    conversation.type ===
+                    "GROUP";
+
+                  /*
+                   * "You: …" / "Alice: …" previews.
+                   * System notices have no prefix.
+                   */
+                  const lastMessagePrefix =
+                    conversation.lastMessageType ===
+                    "SYSTEM"
+                      ? ""
+                      : Number(
+                            conversation.lastMessageSenderId,
+                          ) ===
+                          Number(senderId)
+                        ? "You: "
+                        : isGroup &&
+                            conversation.lastMessageSenderName
+                          ? `${conversation.lastMessageSenderName.split(" ")[0]}: `
+                          : "";
+
                   return (
                     <motion.div
                       key={
@@ -1836,13 +2141,22 @@ const ChatSidebar: React.FC<
                             <Avatar
                               size="3"
                               radius="full"
+                              color={
+                                isGroup
+                                  ? "indigo"
+                                  : undefined
+                              }
                               fallback={
-                                conversation.fullName
-                                  ?.charAt(
-                                    0,
-                                  )
-                                  ?.toUpperCase() ||
-                                "U"
+                                isGroup ? (
+                                  <Users size={18} />
+                                ) : (
+                                  conversation.fullName
+                                    ?.charAt(
+                                      0,
+                                    )
+                                    ?.toUpperCase() ||
+                                  "U"
+                                )
                               }
                               src={
                                 conversation.profilePicture ??
@@ -1850,7 +2164,8 @@ const ChatSidebar: React.FC<
                               }
                             />
 
-                            {onlineUserIds.has(
+                            {!isGroup &&
+                              onlineUserIds.has(
                               Number(
                                 conversation.userId,
                               ),
@@ -1883,8 +2198,11 @@ const ChatSidebar: React.FC<
                                     : "text-gray-900 dark:text-white"
                                 }`}
                               >
-                                {conversation.fullName ||
-                                  "Unknown User"}
+                                {isGroup
+                                  ? conversation.name ||
+                                    "Group"
+                                  : conversation.fullName ||
+                                    "Unknown User"}
                               </Text>
 
                               {isSelected && (
@@ -1911,6 +2229,7 @@ const ChatSidebar: React.FC<
                                     : "text-gray-500 dark:text-gray-400"
                                 }`}
                               >
+                                {lastMessagePrefix}
                                 {
                                   conversation.lastMessage
                                 }
@@ -1920,10 +2239,9 @@ const ChatSidebar: React.FC<
                                 size="1"
                                 className="block truncate text-gray-500 dark:text-gray-400"
                               >
-                                @
-                                {
-                                  conversation.publicId
-                                }
+                                {isGroup
+                                  ? `${conversation.memberCount ?? 0} members`
+                                  : `@${conversation.publicId}`}
                               </Text>
                             )}
                           </Box>

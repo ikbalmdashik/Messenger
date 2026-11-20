@@ -1,13 +1,9 @@
-
 "use client";
 
 import axios from "axios";
-import API_ENDPOINTS, {
-  GetUserByPublicIdResponse,
-} from "../routes/api";
-
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import {
   Avatar,
@@ -24,60 +20,256 @@ import {
 } from "@radix-ui/themes";
 
 import {
-  CheckCircle2,
+  ArrowLeft,
+  BadgeCheck,
+  Globe,
+  GraduationCap,
+  Link2,
+  Lock,
   Mail,
+  MapPin,
+  MessageCircle,
+  Pencil,
   Phone,
   UserRound,
-  MessageCircle,
-  ShieldCheck,
-  CalendarDays,
 } from "lucide-react";
+
+import API_ENDPOINTS, {
+  GetUserByPublicIdResponse,
+} from "../routes/api";
+import Routes from "../routes/routes";
+import {
+  getErrorMessage,
+  PENDING_CONVERSATION_KEY,
+} from "../lib/apiError";
+import {
+  formatLocation,
+  formatYears,
+  initialsOf,
+  prettyUrl,
+  visibilityLabel,
+} from "../lib/profile";
+import useConfirm from "../components/shared/useConfirm";
+
+/* ============================================================
+   SMALL PIECES
+============================================================ */
+
+const SectionTitle = ({
+  icon,
+  title,
+  note,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  note?: string;
+}) => (
+  <Flex align="center" justify="between" gap="2" mb="3">
+    <Flex align="center" gap="2">
+      <span className="text-[var(--gray-11)]">{icon}</span>
+      <Heading size="3">{title}</Heading>
+    </Flex>
+
+    {note && (
+      <Badge variant="soft" color="gray">
+        {note}
+      </Badge>
+    )}
+  </Flex>
+);
+
+const HiddenNotice = () => (
+  <Flex align="center" gap="2">
+    <Lock size={14} color="var(--gray-10)" />
+    <Text size="2" color="gray">
+      This person keeps this private.
+    </Text>
+  </Flex>
+);
+
+const ContactRow = ({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) => (
+  <Flex align="center" gap="3">
+    <span className="shrink-0 text-[var(--gray-10)]">{icon}</span>
+    <Box className="min-w-0 flex-1 truncate text-sm">{children}</Box>
+  </Flex>
+);
+
+/* ============================================================
+   PAGE
+============================================================ */
 
 export default function PublicProfile() {
   const params = useParams<{ publicId: string }>();
-  const publicId = params.publicId;
+  const publicId = decodeURIComponent(params.publicId ?? "");
+  const router = useRouter();
 
-  const [user, setUser] =
-    useState<GetUserByPublicIdResponse | null>(null);
-
+  const [user, setUser] = useState<GetUserByPublicIdResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [viewerId, setViewerId] = useState<number | null>(null);
+  const [messageLoading, setMessageLoading] = useState(false);
+  const [messageError, setMessageError] = useState("");
+
   useEffect(() => {
-    const getUserByPublicId = async () => {
+    axios
+      .post(API_ENDPOINTS.GetUserByToken, {}, { withCredentials: true })
+      .then((response) => {
+        const id = Number(response.data?.userId);
+        setViewerId(Number.isFinite(id) ? id : null);
+      })
+      .catch(() => setViewerId(null));
+  }, []);
+
+  useEffect(() => {
+    if (!publicId) {
+      return;
+    }
+
+    const load = async () => {
       try {
         setLoading(true);
         setError("");
 
-        const response = await axios.post(
+        const response = await axios.post<GetUserByPublicIdResponse | null>(
           API_ENDPOINTS.GetUserByPublicId,
           { publicId },
-          { withCredentials: true }
+          { withCredentials: true },
         );
 
+        if (!response.data) {
+          setError("This profile doesn't exist.");
+        }
+
         setUser(response.data);
-      } catch (error) {
-        console.error("Error fetching user:", error);
-        setError("Unable to find this user.");
+      } catch (err) {
+        console.error("Error fetching user:", err);
+        setError("Unable to load this profile.");
       } finally {
         setLoading(false);
       }
     };
 
-    if (publicId) {
-      getUserByPublicId();
-    }
+    void load();
   }, [publicId]);
+
+  const goBack = () =>
+    window.history.length > 1 ? router.back() : router.push(Routes.Chat);
+
+  const [blockBusy, setBlockBusy] = useState(false);
+
+  const { confirm, confirmDialog } = useConfirm();
+
+  const toggleBlock = async (block: boolean) => {
+    if (!user) {
+      return;
+    }
+
+    const ok = await confirm(
+      block
+        ? {
+            title: `Block ${user.fullName}?`,
+            consequences: [
+              "Neither of you can message the other.",
+              "They can't add you to groups or see your private details.",
+              "You can unblock any time from Settings → Blocked.",
+            ],
+            confirmLabel: "Block",
+            danger: true,
+          }
+        : {
+            title: `Unblock ${user.fullName}?`,
+            consequences: ["You can message each other again."],
+            confirmLabel: "Unblock",
+          },
+    );
+
+    if (!ok) {
+      return;
+    }
+
+    try {
+      setBlockBusy(true);
+      setMessageError("");
+
+      const response = await axios.post<{
+        blockedByMe: boolean;
+        blockedMe: boolean;
+      }>(
+        block ? API_ENDPOINTS.BlockUser : API_ENDPOINTS.UnblockUser,
+        { userId: user.userId },
+        { withCredentials: true },
+      );
+
+      setUser({ ...user, ...response.data });
+    } catch (err) {
+      setMessageError(
+        getErrorMessage(err, block ? "Couldn't block." : "Couldn't unblock."),
+      );
+    } finally {
+      setBlockBusy(false);
+    }
+  };
+
+  const handleMessage = async () => {
+    if (!user) {
+      return;
+    }
+
+    if (viewerId === null) {
+      router.push(Routes.Login);
+      return;
+    }
+
+    try {
+      setMessageLoading(true);
+      setMessageError("");
+
+      const response = await axios.post(
+        API_ENDPOINTS.CreateConversation,
+        { userId: user.userId },
+        { withCredentials: true },
+      );
+
+      const conversationId = Number(response.data?.conversationId);
+
+      if (Number.isFinite(conversationId)) {
+        try {
+          sessionStorage.setItem(
+            PENDING_CONVERSATION_KEY,
+            String(conversationId),
+          );
+        } catch {
+          // Storage unavailable: chat just opens normally.
+        }
+      }
+
+      router.push(Routes.Chat);
+    } catch (err) {
+      setMessageError(getErrorMessage(err, "Couldn't start a conversation."));
+    } finally {
+      setMessageLoading(false);
+    }
+  };
+
+  /* ----------------------------------------------------------
+     Loading / not found
+  ---------------------------------------------------------- */
 
   if (loading) {
     return (
-      <Container size="3" px="4" py="8">
-        <Card size="4">
-          <Flex direction="column" align="center" gap="4">
-            <Skeleton width="100px" height="100px" />
+      <Container size="2" px="4" py="8">
+        <Card size="3">
+          <Flex direction="column" align="center" gap="3">
+            <Skeleton width="96px" height="96px" style={{ borderRadius: "50%" }} />
             <Skeleton width="180px" height="24px" />
             <Skeleton width="120px" height="16px" />
-            <Skeleton width="100%" height="100px" />
           </Flex>
         </Card>
       </Container>
@@ -93,222 +285,273 @@ export default function PublicProfile() {
         gap="3"
         style={{ minHeight: "70vh" }}
       >
-        <Box
-          p="4"
-          style={{
-            borderRadius: "50%",
-            background: "var(--gray-a3)",
-          }}
-        >
-          <UserRound size={36} color="var(--gray-9)" />
-        </Box>
-
+        <UserRound size={40} color="var(--gray-9)" />
         <Heading size="5">User not found</Heading>
-
         <Text color="gray" size="2">
           {error || "This profile may no longer be available."}
         </Text>
-
-        <Button variant="soft" onClick={() => window.history.back()}>
-          Go Back
+        <Button variant="soft" onClick={goBack}>
+          Go back
         </Button>
       </Flex>
     );
   }
 
-  const initials = user.fullName
-    .split(" ")
-    .map((name) => name[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+  /* ----------------------------------------------------------
+     Profile
+  ---------------------------------------------------------- */
+
+  const location = formatLocation(user.location);
+  const education = user.education ?? [];
+  const socials = user.contact?.socials ?? [];
+  const website = user.contact?.website;
+
+  const hasContact =
+    Boolean(user.email) || Boolean(user.phone) || Boolean(website) || socials.length > 0;
+
+  const ownerNote = (key: "contact" | "education" | "location") =>
+    user.isOwner && user.privacy
+      ? `Visible to: ${visibilityLabel(user.privacy[key])}`
+      : undefined;
 
   return (
-    <Container size="3" px="4" py={{ initial: "5", sm: "8" }}>
-      <Flex direction="column" gap="5">
+    <Container size="2" px="4" py={{ initial: "4", sm: "7" }}>
+      {confirmDialog}
 
-        {/* Profile Card */}
+      <Flex direction="column" gap="4">
+        <Flex>
+          <Button variant="ghost" color="gray" onClick={goBack}>
+            <ArrowLeft size={16} />
+            Back
+          </Button>
+        </Flex>
+
+        {/* HEADER */}
+
         <Card size="3">
           <Flex
-            direction="column"
+            direction={{ initial: "column", sm: "row" }}
             align="center"
-            gap="3"
-            py="5"
+            gap="4"
           >
-            {/* Avatar */}
-            <Box
-              p="1"
-              style={{
-                borderRadius: "50%",
-                border: "2px solid var(--accent-a6)",
-              }}
+            <Avatar
+              size="7"
+              radius="full"
+              color="indigo"
+              variant="soft"
+              fallback={initialsOf(user.fullName)}
+            />
+
+            <Flex
+              direction="column"
+              gap="1"
+              align={{ initial: "center", sm: "start" }}
+              className="min-w-0 flex-1"
             >
-              <Avatar
-                size="8"
-                radius="full"
-                fallback={initials}
-                color="indigo"
-                variant="soft"
-              />
-            </Box>
-
-            {/* Name */}
-            <Flex align="center" gap="2" wrap="wrap" justify="center">
-              <Heading size="6" align="center">
-                {user.fullName}
-              </Heading>
-
-              {user.isEmailVerified && (
-                <CheckCircle2
-                  size={19}
-                  color="var(--accent-9)"
-                />
-              )}
-            </Flex>
-
-            {/* Public ID */}
-            <Text color="gray" size="2">
-              @{user.publicId}
-            </Text>
-
-            {/* Badges */}
-            <Flex gap="2" wrap="wrap" justify="center">
-              <Badge
-                color={user.isEmailVerified ? "green" : "gray"}
-                variant="soft"
-                size="2"
-              >
-                {user.isEmailVerified
-                  ? "Verified Account"
-                  : "Unverified Account"}
-              </Badge>
-
-              <Badge color="indigo" variant="soft" size="2">
-                {user.role}
-              </Badge>
-            </Flex>
-
-            {/* Actions */}
-            <Flex gap="3" mt="2" wrap="wrap" justify="center">
-              <Button size="3">
-                <MessageCircle size={17} />
-                Message
-              </Button>
-
-            </Flex>
-          </Flex>
-
-          <Separator size="4" />
-
-          {/* User Information */}
-          <Box p="4">
-            <Heading size="3" mb="4">
-              Account Information
-            </Heading>
-
-            <Flex direction="column" gap="4">
-
-              {/* Email */}
-              <Flex align="center" gap="3">
-                <Box
-                  p="2"
-                  style={{
-                    background: "var(--gray-a3)",
-                    borderRadius: "var(--radius-3)",
-                  }}
-                >
-                  <Mail size={19} color="var(--gray-11)" />
-                </Box>
-
-                <Box flexGrow="1" minWidth="0">
-                  <Text size="2" weight="medium" style={{ overflowWrap: "anywhere" }}>
-                    {user.email}
-                  </Text>
-                </Box>
+              <Flex align="center" gap="2">
+                <Heading size="6" className="truncate">
+                  {user.fullName}
+                </Heading>
 
                 {user.isEmailVerified && (
-                  <Badge color="green" variant="soft">
-                    Verified
-                  </Badge>
+                  <BadgeCheck
+                    size={20}
+                    className="shrink-0 text-emerald-500"
+                    aria-label="Verified"
+                  />
                 )}
               </Flex>
 
-              <Separator size="4" />
+              <Text color="gray" size="2">
+                @{user.publicId}
+              </Text>
 
-              {/* Phone */}
-              <Flex align="center" gap="3">
-                <Box
-                  p="2"
-                  style={{
-                    background: "var(--gray-a3)",
-                    borderRadius: "var(--radius-3)",
-                  }}
-                >
-                  <Phone size={19} color="var(--gray-11)" />
-                </Box>
-
-                <Box flexGrow="1">
-                  <Text size="2" weight="medium">
-                    {user.phone || "Not provided"}
+              {location && (
+                <Flex align="center" gap="1">
+                  <MapPin size={14} color="var(--gray-10)" />
+                  <Text size="2" color="gray">
+                    {location}
                   </Text>
-                </Box>
-              </Flex>
-
-              <Separator size="4" />
-
-              {/* Public ID */}
-              <Flex align="center" gap="3">
-                <Box
-                  p="2"
-                  style={{
-                    background: "var(--gray-a3)",
-                    borderRadius: "var(--radius-3)",
-                  }}
-                >
-                  <UserRound size={19} color="var(--gray-11)" />
-                </Box>
-
-                <Box flexGrow="1">
-                  <Text size="2" weight="medium">
-                    @{user.publicId}
-                  </Text>
-                </Box>
-              </Flex>
-
-              <Separator size="4" />
-
-              {/* Account Status */}
-              <Flex align="center" gap="3">
-                <Box
-                  p="2"
-                  style={{
-                    background: "var(--gray-a3)",
-                    borderRadius: "var(--radius-3)",
-                  }}
-                >
-                  <ShieldCheck size={19} color="var(--gray-11)" />
-                </Box>
-
-                <Box flexGrow="1">
-                  <Text size="2" weight="medium">
-                    Active Account
-                  </Text>
-                </Box>
-
-                <Badge color="green" variant="soft">
-                  Active
-                </Badge>
-              </Flex>
-
+                </Flex>
+              )}
             </Flex>
-          </Box>
+
+            <Flex direction="column" align="center" gap="1" className="shrink-0">
+              {user.isOwner ? (
+                <Button variant="soft" asChild>
+                  <Link href={`${Routes.Settings}?tab=profile`}>
+                    <Pencil size={15} />
+                    Edit profile
+                  </Link>
+                </Button>
+              ) : user.blockedByMe ? (
+                <Button
+                  variant="soft"
+                  color="gray"
+                  onClick={() => toggleBlock(false)}
+                  loading={blockBusy}
+                >
+                  Unblock
+                </Button>
+              ) : user.blockedMe ? null : (
+                <Flex gap="2">
+                  <Button onClick={handleMessage} loading={messageLoading}>
+                    <MessageCircle size={16} />
+                    {viewerId === null ? "Log in to message" : "Message"}
+                  </Button>
+
+                  {viewerId !== null && (
+                    <Button
+                      variant="soft"
+                      color="red"
+                      onClick={() => toggleBlock(true)}
+                      loading={blockBusy}
+                    >
+                      Block
+                    </Button>
+                  )}
+                </Flex>
+              )}
+
+              {messageError && (
+                <Text size="1" color="red">
+                  {messageError}
+                </Text>
+              )}
+            </Flex>
+          </Flex>
         </Card>
 
-        {/* Footer */}
-        <Text color="gray" size="1" align="center">
-          Messenger · Public Profile
-        </Text>
+        {/* CONTACT */}
 
+        <Card size="3">
+          <SectionTitle
+            icon={<Phone size={17} />}
+            title="Contact"
+            note={ownerNote("contact")}
+          />
+
+          {user.hidden.contact ? (
+            <HiddenNotice />
+          ) : !hasContact ? (
+            <Text size="2" color="gray">
+              No contact details added.
+            </Text>
+          ) : (
+            <Flex direction="column" gap="3">
+              {user.email && (
+                <ContactRow icon={<Mail size={16} />}>
+                  <a href={`mailto:${user.email}`} className="hover:underline">
+                    {user.email}
+                  </a>
+                </ContactRow>
+              )}
+
+              {user.phone && (
+                <ContactRow icon={<Phone size={16} />}>
+                  <a href={`tel:${user.phone}`} className="hover:underline">
+                    {user.phone}
+                  </a>
+                </ContactRow>
+              )}
+
+              {website && (
+                <ContactRow icon={<Globe size={16} />}>
+                  <a
+                    href={website}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    className="text-[var(--accent-11)] hover:underline"
+                  >
+                    {prettyUrl(website)}
+                  </a>
+                </ContactRow>
+              )}
+
+              {socials.map((social) => (
+                <ContactRow
+                  key={`${social.platform}-${social.url}`}
+                  icon={<Link2 size={16} />}
+                >
+                  <Text color="gray">{social.platform} · </Text>
+                  <a
+                    href={social.url}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    className="text-[var(--accent-11)] hover:underline"
+                  >
+                    {prettyUrl(social.url)}
+                  </a>
+                </ContactRow>
+              ))}
+            </Flex>
+          )}
+        </Card>
+
+        {/* EDUCATION */}
+
+        <Card size="3">
+          <SectionTitle
+            icon={<GraduationCap size={17} />}
+            title="Education"
+            note={ownerNote("education")}
+          />
+
+          {user.hidden.education ? (
+            <HiddenNotice />
+          ) : education.length === 0 ? (
+            <Text size="2" color="gray">
+              No education added.
+            </Text>
+          ) : (
+            <Flex direction="column" gap="3">
+              {education.map((item, index) => {
+                const years = formatYears(item.startYear, item.endYear, item.current);
+
+                const subtitle = [item.degree, item.fieldOfStudy]
+                  .filter(Boolean)
+                  .join(", ");
+
+                return (
+                  <Box key={`${item.institution}-${index}`}>
+                    {index > 0 && <Separator size="4" mb="3" />}
+
+                    <Flex justify="between" gap="3">
+                      <Box className="min-w-0">
+                        <Text size="2" weight="bold" as="div">
+                          {item.institution}
+                        </Text>
+
+                        {subtitle && (
+                          <Text size="2" color="gray" as="div">
+                            {subtitle}
+                          </Text>
+                        )}
+                      </Box>
+
+                      {years && (
+                        <Text size="1" color="gray" className="shrink-0">
+                          {years}
+                        </Text>
+                      )}
+                    </Flex>
+
+                    {item.description && (
+                      <Text
+                        size="2"
+                        as="p"
+                        mt="1"
+                        style={{ whiteSpace: "pre-wrap" }}
+                      >
+                        {item.description}
+                      </Text>
+                    )}
+                  </Box>
+                );
+              })}
+            </Flex>
+          )}
+        </Card>
       </Flex>
     </Container>
   );

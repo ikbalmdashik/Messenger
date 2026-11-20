@@ -14,6 +14,29 @@ import { ConversationParticipantEntity } from "./entities/conversation-participa
 import { UsersEntity } from "@/auth/entities/auth.entity";
 import { ChatMessageEntity } from "../entities/chat.entity";
 import { CreateConversationDto } from "./dto/create-conversation.dto";
+import { AuthService } from "@/auth/auth.service";
+
+export interface SidebarItem {
+  conversationId: number;
+  type: "DIRECT" | "GROUP";
+  userId: number | null;
+  fullName?: string;
+  email?: string;
+  publicId?: string;
+  isEmailVerified?: boolean;
+  name?: string;
+  description?: string | null;
+  memberCount?: number;
+  myRole?: string;
+  isDeactivated?: boolean;
+  lastMessage: string | null;
+  lastMessageAt: Date | null;
+  lastMessageSenderId: number | null;
+  lastMessageSenderName: string | null;
+  lastMessageType: string | null;
+  unreadCount: number;
+  updatedAt: Date;
+}
 
 @Injectable()
 export class ConversationService {
@@ -28,6 +51,8 @@ export class ConversationService {
     private readonly usersRepository: Repository<UsersEntity>,
 
     private readonly dataSource: DataSource,
+
+    private readonly authService: AuthService,
   ) { }
 
   /**
@@ -66,8 +91,25 @@ export class ConversationService {
       },
     });
 
-    if (!targetUser) {
+    if (!targetUser || targetUser.isDeactivated) {
       throw new NotFoundException("User not found.");
+    }
+
+    if (await this.authService.IsDeactivated(userId)) {
+      throw new BadRequestException(
+        "Your account is deactivated. Activate it to start chats.",
+      );
+    }
+
+    if (
+      await this.authService.IsBlockedEitherWay(
+        userId,
+        targetUserId,
+      )
+    ) {
+      throw new BadRequestException(
+        "You can't message this person.",
+      );
     }
 
     const directKey =
@@ -227,31 +269,6 @@ export class ConversationService {
   }
 
   /**
-   * Check whether a user belongs to a conversation.
-   */
-  async isParticipant(
-    conversationId: number,
-    userId: number,
-  ): Promise<boolean> {
-    if (
-      !Number.isInteger(Number(conversationId)) ||
-      !Number.isInteger(Number(userId))
-    ) {
-      return false;
-    }
-
-    const participant =
-      await this.participantRepository.findOne({
-        where: {
-          conversationId: Number(conversationId),
-          userId: Number(userId),
-        },
-      });
-
-    return !!participant;
-  }
-
-  /**
    * Get a conversation only if the current user belongs to it.
    */
   async getConversationForUser(
@@ -305,7 +322,8 @@ export class ConversationService {
   }
 
   /**
-   * Return all conversations belonging to the current user.
+   * Return all conversations (direct + group)
+   * belonging to the current user, newest first.
    */
   async getUserConversations(userId: number) {
     const currentUserId = Number(userId);
@@ -319,142 +337,39 @@ export class ConversationService {
       );
     }
 
-    // STEP 1: Find my participant rows
     const myParticipants =
       await this.participantRepository.find({
         where: {
           userId: currentUserId,
         },
-        relations: {
-          conversation: true,
-        },
       });
 
-
-    if (myParticipants.length === 0) {
-      console.log(
-        "NO PARTICIPANT ROW FOUND FOR USER:",
-        currentUserId,
-      );
-
-      return [];
-    }
-
-    const conversations = [];
+    const conversations: SidebarItem[] = [];
 
     for (const myParticipant of myParticipants) {
-
-      const conversation =
-        myParticipant.conversation;
-
-      if (!conversation) {
-        console.log(
-          "NO CONVERSATION RELATION:",
-          myParticipant,
-        );
+      if (myParticipant.isHidden) {
         continue;
       }
 
-      if (conversation.type !== "DIRECT") {
-        continue;
-      }
-
-      // STEP 2: Get ALL participants in this conversation
-      const participants =
-        await this.participantRepository.find({
-          where: {
-            conversationId:
-              conversation.conversationId,
-          },
-          relations: {
-            user: true,
-          },
-        });
-
-      // STEP 3: Find the other user
-      const otherParticipant =
-        participants.find(
-          (participant) =>
-            Number(participant.userId) !==
-            currentUserId,
+      const item =
+        await this.getSidebarItem(
+          myParticipant.conversationId,
+          currentUserId,
         );
 
-      if (!otherParticipant) {
-        console.log(
-          "NO OTHER PARTICIPANT FOUND",
-        );
-        continue;
+      if (item) {
+        conversations.push(item);
       }
-
-      if (!otherParticipant.user) {
-        console.log(
-          "OTHER PARTICIPANT HAS NO USER RELATION",
-        );
-        continue;
-      }
-
-      // STEP 4: Find latest message
-      const lastMessage =
-        await this.dataSource
-          .getRepository(ChatMessageEntity)
-          .createQueryBuilder("message")
-          .where(
-            "message.conversationId = :conversationId",
-            {
-              conversationId:
-                conversation.conversationId,
-            },
-          )
-          .orderBy(
-            "message.createdAt",
-            "DESC",
-          )
-          .getOne();
-
-      conversations.push({
-        conversationId:
-          conversation.conversationId,
-
-        userId:
-          otherParticipant.user.userId,
-
-        fullName:
-          otherParticipant.user.fullName,
-
-        email:
-          otherParticipant.user.email,
-
-        publicId:
-          otherParticipant.user.publicId,
-
-        isEmailVerified:
-          otherParticipant.user.isEmailVerified,
-
-        lastMessage:
-          lastMessage?.message ?? null,
-
-        lastMessageAt:
-          lastMessage?.createdAt ?? null,
-
-        lastMessageSenderId:
-          lastMessage?.senderId ?? null,
-
-        unreadCount:
-          myParticipant.unreadCount ?? 0,
-
-        updatedAt:
-          conversation.updatedAt,
-      });
     }
 
     conversations.sort((a, b) => {
-      const dateA = a.lastMessageAt
-        ? new Date(a.lastMessageAt).getTime()
-        : new Date(a.updatedAt).getTime();
+      const dateA = new Date(
+        a.lastMessageAt ?? a.updatedAt,
+      ).getTime();
 
-      const dateB = b.lastMessageAt
-        ? new Date(b.lastMessageAt).getTime()
-        : new Date(b.updatedAt).getTime();
+      const dateB = new Date(
+        b.lastMessageAt ?? b.updatedAt,
+      ).getTime();
 
       return dateB - dateA;
     });
@@ -484,46 +399,60 @@ export class ConversationService {
     });
   }
 
-
-  async getConversationSidebarUser(
+  /**
+   * All participant user IDs (no membership check).
+   */
+  async getParticipantIds(
     conversationId: number,
-    currentUserId: number,
-  ) {
+  ): Promise<number[]> {
+    const rows =
+      await this.participantRepository.find({
+        where: {
+          conversationId: Number(conversationId),
+        },
+        select: {
+          userId: true,
+        },
+      });
+
+    return rows.map((row) => Number(row.userId));
+  }
+
+  /**
+   * One sidebar row, as seen by `forUserId`.
+   *
+   * DIRECT: describes the other user.
+   * GROUP:  describes the group.
+   */
+  async getSidebarItem(
+    conversationId: number,
+    forUserId: number,
+  ): Promise<SidebarItem | null> {
     const participants =
-      await this.getParticipants(
-        conversationId,
-        currentUserId,
-      );
+      await this.participantRepository.find({
+        where: {
+          conversationId: Number(conversationId),
+        },
+        relations: {
+          user: true,
+          conversation: true,
+        },
+      });
 
-    const currentParticipant =
-      participants.find(
-        (participant) =>
-          Number(participant.userId) ===
-          Number(currentUserId),
-      );
+    const me = participants.find(
+      (participant) =>
+        Number(participant.userId) ===
+        Number(forUserId),
+    );
 
-    const otherParticipant =
-      participants.find(
-        (participant) =>
-          Number(participant.userId) !==
-          Number(currentUserId),
-      );
-
-    if (
-      !otherParticipant ||
-      !otherParticipant.user
-    ) {
+    if (!me || !me.conversation || me.isHidden) {
       return null;
     }
 
-    const user =
-      otherParticipant.user;
+    const conversation = me.conversation;
 
-    /*
-     * Find latest message.
-     */
-    const lastMessage =
-      await this.dataSource
+    const lastMessageQuery =
+      this.dataSource
         .getRepository(ChatMessageEntity)
         .createQueryBuilder("message")
         .where(
@@ -532,47 +461,137 @@ export class ConversationService {
             conversationId:
               Number(conversationId),
           },
-        )
-        .orderBy(
-          "message.createdAt",
-          "DESC",
-        )
+        );
+
+    if (me.clearedAt) {
+      lastMessageQuery.andWhere(
+        "message.createdAt > :clearedAt",
+        { clearedAt: me.clearedAt },
+      );
+    }
+
+    const lastMessage =
+      await lastMessageQuery
+        .orderBy("message.createdAt", "DESC")
+        .addOrderBy("message.messageId", "DESC")
         .getOne();
 
-    return {
+    const lastMessageText = lastMessage
+      ? lastMessage.isDeleted
+        ? "Message deleted"
+        : lastMessage.message
+      : null;
+
+    const lastSender = lastMessage
+      ? participants.find(
+          (participant) =>
+            Number(participant.userId) ===
+            Number(lastMessage.senderId),
+        )?.user
+      : undefined;
+
+    const base = {
       conversationId:
-        Number(conversationId),
-
-      userId:
-        user.userId,
-
-      fullName:
-        user.fullName,
-
-      email:
-        user.email,
-
-      publicId:
-        user.publicId,
-
-      isEmailVerified:
-        user.isEmailVerified,
-
-      lastMessage:
-        lastMessage?.message ?? null,
-
+        conversation.conversationId,
+      lastMessage: lastMessageText,
       lastMessageAt:
         lastMessage?.createdAt ?? null,
-
       lastMessageSenderId:
         lastMessage?.senderId ?? null,
+      lastMessageSenderName:
+        lastSender?.fullName ?? null,
+      lastMessageType:
+        lastMessage?.type ?? null,
+      unreadCount: me.unreadCount ?? 0,
+      updatedAt: conversation.updatedAt,
+    };
 
-      unreadCount:
-        currentParticipant?.unreadCount ??
-        0,
+    if (conversation.type === "GROUP") {
+      return {
+        ...base,
+        type: "GROUP",
+        userId: null,
+        name: conversation.name ?? "Group",
+        description:
+          conversation.description ?? null,
+        memberCount: participants.length,
+        myRole: me.role ?? "MEMBER",
+      };
+    }
+
+    const other = participants.find(
+      (participant) =>
+        Number(participant.userId) !==
+        Number(forUserId),
+    );
+
+    if (!other?.user) {
+      return null;
+    }
+
+    return {
+      ...base,
+      type: "DIRECT",
+      userId: other.user.userId,
+      fullName: other.user.fullName,
+      email: other.user.email,
+      publicId: other.user.publicId,
+      isEmailVerified:
+        other.user.isEmailVerified,
+      isDeactivated: Boolean(
+        other.user.isDeactivated,
+      ),
     };
   }
 
+  /**
+   * "Delete chat" for one user. Other members keep
+   * their full history; this user sees only what is
+   * sent after now, and the chat leaves their
+   * sidebar until then.
+   */
+  async deleteChatForMe(
+    userId: number,
+    conversationId: number,
+  ) {
+    const participant =
+      await this.participantRepository.findOne({
+        where: {
+          conversationId: Number(conversationId),
+          userId: Number(userId),
+        },
+      });
+
+    if (!participant) {
+      throw new NotFoundException(
+        "Conversation not found.",
+      );
+    }
+
+    participant.clearedAt = new Date();
+    participant.isHidden = true;
+    participant.unreadCount = 0;
+
+    await this.participantRepository.save(
+      participant,
+    );
+
+    return { success: true, conversationId: Number(conversationId) };
+  }
+
+  async deleteAllChatsForMe(userId: number) {
+    const result =
+      await this.participantRepository.update(
+        { userId: Number(userId) },
+        {
+          clearedAt: new Date(),
+          isHidden: true,
+          unreadCount: 0,
+        },
+      );
+
+    return { success: true, deleted: result.affected ?? 0 };
+  }
 
   async markConversationAsRead(
     conversationId: number,
