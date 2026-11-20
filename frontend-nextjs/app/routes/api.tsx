@@ -297,6 +297,22 @@ export interface ChatMessageResponse {
   status: string;
 
   createdAt: string;
+
+  editedAt?: string | null;
+
+  isDeleted?: boolean;
+
+  replyTo?: {
+    messageId: number;
+    senderId: number;
+    message: string;
+    isDeleted: boolean;
+  } | null;
+
+  reactions?: {
+    userId: number;
+    emoji: string;
+  }[];
 }
 
 /**
@@ -307,6 +323,10 @@ export interface ChatMessageResponse {
 
 export interface GetConversationRequest {
   conversationId: number;
+
+  limit?: number;
+
+  offset?: number;
 }
 
 export type GetConversationResponse = ChatMessageResponse[];
@@ -323,6 +343,8 @@ export interface SendMessageRequest {
   message: string;
 
   status: string;
+
+  replyToMessageId?: number | null;
 }
 
 export interface SendMessageResponse {
@@ -385,6 +407,8 @@ export interface SocketSendMessageRequest {
   message: string;
 
   status: string;
+
+  replyToMessageId?: number | null;
 }
 
 /**

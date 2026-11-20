@@ -13,10 +13,19 @@ import {
   Socket,
 } from "socket.io";
 
-import { ChatService } from "./chat.service";
+import {
+  ChatService,
+  SerializedMessage,
+} from "./chat.service";
 import { CreateChatDto } from "./dto/create-chat.dto";
 
 import { ConversationService } from "./conversation/conversation.service";
+
+/**
+ * How long a user may have zero sockets
+ * before being reported offline.
+ */
+const OFFLINE_GRACE_MS = 4000;
 
 interface JwtPayload {
   sub?: {
@@ -168,6 +177,18 @@ export class ChatGateway {
       console.log(
         `Socket joined personal room: user:${userId}`,
       );
+
+      /*
+       * First connection for this user -> online.
+       */
+      const sockets =
+        await this.server
+          .in(`user:${userId}`)
+          .fetchSockets();
+
+      if (sockets.length === 1) {
+        void this.handleUserOnline(userId);
+      }
     } catch (error) {
       console.error(
         `Socket authentication failed: ${socket.id}`,
@@ -243,6 +264,168 @@ export class ChatGateway {
     console.log(
       `Client disconnected: ${socket.id} | User: ${userId}`,
     );
+
+    if (
+      !Number.isFinite(userId) ||
+      userId <= 0
+    ) {
+      return;
+    }
+
+    try {
+      /*
+       * Grace period: the frontend reconnects
+       * its sockets when switching chats, so
+       * wait briefly before going "offline".
+       */
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          OFFLINE_GRACE_MS,
+        ),
+      );
+
+      /*
+       * The disconnected socket has already
+       * left its rooms here.
+       */
+      const remaining =
+        await this.server
+          .in(`user:${userId}`)
+          .fetchSockets();
+
+      if (remaining.length > 0) {
+        return;
+      }
+
+      const lastSeenAt = new Date();
+
+      await this.chatService.SetLastSeen(
+        userId,
+        lastSeenAt,
+      );
+
+      await this.broadcastPresence(
+        userId,
+        false,
+        lastSeenAt,
+      );
+    } catch (error) {
+      console.error(
+        "Presence offline error:",
+        error,
+      );
+    }
+  }
+
+  /**
+   * ==========================================
+   * PRESENCE HELPERS
+   * ==========================================
+   */
+  private async isUserOnline(
+    userId: number,
+  ): Promise<boolean> {
+    const sockets =
+      await this.server
+        .in(`user:${userId}`)
+        .fetchSockets();
+
+    return sockets.length > 0;
+  }
+
+  /**
+   * Tell everyone who shares a conversation
+   * with this user that their presence changed.
+   */
+  private async broadcastPresence(
+    userId: number,
+    isOnline: boolean,
+    lastSeenAt: Date | null,
+  ) {
+    const contactIds =
+      await this.chatService.GetContactIds(
+        userId,
+      );
+
+    if (contactIds.length === 0) {
+      return;
+    }
+
+    this.server
+      .to(
+        contactIds.map(
+          (id) => `user:${id}`,
+        ),
+      )
+      .emit("presence_update", {
+        userId,
+        isOnline,
+        lastSeenAt,
+      });
+  }
+
+  private async handleUserOnline(
+    userId: number,
+  ) {
+    try {
+      await this.broadcastPresence(
+        userId,
+        true,
+        null,
+      );
+
+      /*
+       * Everything sent while this user was
+       * offline is now delivered.
+       */
+      const conversationIds =
+        await this.chatService.MarkPendingDelivered(
+          userId,
+        );
+
+      for (const conversationId of conversationIds) {
+        this.server
+          .to(
+            `conversation-${conversationId}`,
+          )
+          .emit("messages_delivered", {
+            conversationId,
+            recipientId: userId,
+          });
+      }
+    } catch (error) {
+      console.error(
+        "Presence online error:",
+        error,
+      );
+    }
+  }
+
+  private getSocketUserId(
+    client: Socket,
+  ): number | null {
+    const userId = Number(
+      client.data.userId,
+    );
+
+    return Number.isFinite(userId) &&
+      userId > 0
+      ? userId
+      : null;
+  }
+
+  private errorResponse(
+    error: unknown,
+    fallback: string,
+  ) {
+    return {
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : fallback,
+    };
   }
 
   /**
@@ -553,6 +736,27 @@ export class ChatGateway {
       );
 
       /*
+       * Read receipts: the other side's
+       * messages are now "seen".
+       */
+      const seenCount =
+        await this.chatService.MarkMessagesSeen(
+          conversationId,
+          userId,
+        );
+
+      if (seenCount > 0) {
+        this.server
+          .to(
+            `conversation-${conversationId}`,
+          )
+          .emit("messages_seen", {
+            conversationId,
+            readerId: userId,
+          });
+      }
+
+      /*
        * Tell every tab/device belonging
        * to this user that this conversation
        * is now read.
@@ -702,6 +906,33 @@ export class ChatGateway {
        * 4. Increments recipient unreadCount.
        * 5. Keeps sender unreadCount = 0.
        */
+      /*
+       * Find the recipient first so the message
+       * can be saved as "delivered" when they
+       * have an active connection.
+       */
+      const participants =
+        await this.conversationService.getParticipants(
+          conversationId,
+          userId,
+        );
+
+      const otherParticipant =
+        participants.find(
+          (participant) =>
+            Number(participant.userId) !==
+            userId,
+        );
+
+      const recipientOnline =
+        otherParticipant
+          ? await this.isUserOnline(
+              Number(
+                otherParticipant.userId,
+              ),
+            )
+          : false;
+
       const result =
         await this.chatService.CreateChat(
           userId,
@@ -710,8 +941,12 @@ export class ChatGateway {
 
           createChatDto.message.trim(),
 
-          createChatDto.status ||
-            "sent",
+          recipientOnline
+            ? "delivered"
+            : "sent",
+
+          createChatDto.replyToMessageId ??
+            null,
         );
 
       /*
@@ -905,6 +1140,291 @@ export class ChatGateway {
             ? error.message
             : "Unable to send message.",
       };
+    }
+  }
+
+  /**
+   * ==========================================
+   * TYPING INDICATOR
+   * ==========================================
+   *
+   * Frontend emits:
+   *
+   * socket.emit("typing", {
+   *   conversationId,
+   *   isTyping: true | false,
+   * });
+   *
+   * Only sockets that already joined the
+   * conversation room (membership verified in
+   * join_room) can broadcast, so no DB hit
+   * per keystroke.
+   */
+  @SubscribeMessage("typing")
+  HandleTyping(
+    @MessageBody()
+    data: {
+      conversationId: number;
+      isTyping: boolean;
+    },
+
+    @ConnectedSocket()
+    client: Socket,
+  ) {
+    const userId =
+      this.getSocketUserId(client);
+
+    const conversationId = Number(
+      data?.conversationId,
+    );
+
+    if (
+      !userId ||
+      !Number.isFinite(conversationId)
+    ) {
+      return { success: false };
+    }
+
+    const room =
+      `conversation-${conversationId}`;
+
+    if (!client.rooms.has(room)) {
+      return { success: false };
+    }
+
+    client.to(room).emit("typing", {
+      conversationId,
+      userId,
+      isTyping: Boolean(data?.isTyping),
+    });
+
+    return { success: true };
+  }
+
+  /**
+   * ==========================================
+   * PRESENCE LOOKUP
+   * ==========================================
+   *
+   * Used when a conversation is opened to show
+   * "Online" / "Last seen ..." immediately.
+   */
+  @SubscribeMessage("get_presence")
+  async HandleGetPresence(
+    @MessageBody()
+    data: {
+      userId: number;
+    },
+
+    @ConnectedSocket()
+    client: Socket,
+  ) {
+    try {
+      const userId =
+        this.getSocketUserId(client);
+
+      const targetId = Number(
+        data?.userId,
+      );
+
+      if (
+        !userId ||
+        !Number.isFinite(targetId)
+      ) {
+        return {
+          success: false,
+          message: "Unauthorized.",
+        };
+      }
+
+      const allowed =
+        await this.chatService.SharesConversation(
+          userId,
+          targetId,
+        );
+
+      if (!allowed) {
+        return {
+          success: false,
+          message:
+            "No shared conversation.",
+        };
+      }
+
+      const isOnline =
+        await this.isUserOnline(targetId);
+
+      return {
+        success: true,
+        userId: targetId,
+        isOnline,
+        lastSeenAt: isOnline
+          ? null
+          : await this.chatService.GetLastSeen(
+              targetId,
+            ),
+      };
+    } catch (error) {
+      return this.errorResponse(
+        error,
+        "Unable to load presence.",
+      );
+    }
+  }
+
+  /**
+   * Broadcast a changed message to everyone
+   * viewing its conversation.
+   */
+  private emitMessageUpdated(
+    message: SerializedMessage,
+  ) {
+    this.server
+      .to(
+        `conversation-${message.conversationId}`,
+      )
+      .emit("message_updated", message);
+  }
+
+  /**
+   * ==========================================
+   * EDIT MESSAGE
+   * ==========================================
+   */
+  @SubscribeMessage("edit_message")
+  async HandleEditMessage(
+    @MessageBody()
+    data: {
+      messageId: number;
+      message: string;
+    },
+
+    @ConnectedSocket()
+    client: Socket,
+  ) {
+    try {
+      const userId =
+        this.getSocketUserId(client);
+
+      if (!userId) {
+        return {
+          success: false,
+          message: "Unauthorized.",
+        };
+      }
+
+      const updated =
+        await this.chatService.EditMessage(
+          userId,
+          Number(data?.messageId),
+          data?.message,
+        );
+
+      this.emitMessageUpdated(updated);
+
+      return {
+        success: true,
+        message: updated,
+      };
+    } catch (error) {
+      return this.errorResponse(
+        error,
+        "Unable to edit message.",
+      );
+    }
+  }
+
+  /**
+   * ==========================================
+   * DELETE (UNSEND) MESSAGE
+   * ==========================================
+   */
+  @SubscribeMessage("delete_message")
+  async HandleDeleteMessage(
+    @MessageBody()
+    data: {
+      messageId: number;
+    },
+
+    @ConnectedSocket()
+    client: Socket,
+  ) {
+    try {
+      const userId =
+        this.getSocketUserId(client);
+
+      if (!userId) {
+        return {
+          success: false,
+          message: "Unauthorized.",
+        };
+      }
+
+      const deleted =
+        await this.chatService.DeleteMessage(
+          userId,
+          Number(data?.messageId),
+        );
+
+      this.emitMessageUpdated(deleted);
+
+      return {
+        success: true,
+        message: deleted,
+      };
+    } catch (error) {
+      return this.errorResponse(
+        error,
+        "Unable to delete message.",
+      );
+    }
+  }
+
+  /**
+   * ==========================================
+   * TOGGLE REACTION
+   * ==========================================
+   */
+  @SubscribeMessage("toggle_reaction")
+  async HandleToggleReaction(
+    @MessageBody()
+    data: {
+      messageId: number;
+      emoji: string;
+    },
+
+    @ConnectedSocket()
+    client: Socket,
+  ) {
+    try {
+      const userId =
+        this.getSocketUserId(client);
+
+      if (!userId) {
+        return {
+          success: false,
+          message: "Unauthorized.",
+        };
+      }
+
+      const updated =
+        await this.chatService.ToggleReaction(
+          userId,
+          Number(data?.messageId),
+          data?.emoji,
+        );
+
+      this.emitMessageUpdated(updated);
+
+      return {
+        success: true,
+        message: updated,
+      };
+    } catch (error) {
+      return this.errorResponse(
+        error,
+        "Unable to react to message.",
+      );
     }
   }
 }

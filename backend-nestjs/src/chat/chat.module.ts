@@ -6,6 +6,8 @@ import { ChatController } from "./chat.controller";
 import { ChatGateway } from "./chat.getway";
 
 import { ChatMessageEntity } from "./entities/chat.entity";
+import { MessageReactionEntity } from "./entities/message-reaction.entity";
+import { UsersEntity } from "@/auth/entities/auth.entity";
 
 import { AuthModule } from "@/auth/auth.module";
 import { ConversationModule } from "./conversation/conversation.module";
@@ -15,7 +17,9 @@ import { ConversationParticipantEntity } from "./conversation/entities/conversat
   imports: [
     TypeOrmModule.forFeature([
       ChatMessageEntity,
-      ConversationParticipantEntity
+      ConversationParticipantEntity,
+      MessageReactionEntity,
+      UsersEntity,
     ]),
 
     AuthModule,

@@ -51,6 +51,16 @@ export class UsersEntity {
   isEmailVerified: boolean;
 
   /**
+   * Updated when the user's last socket disconnects.
+   * Used for "last seen" in the chat header.
+   */
+  @Column({
+    type: "timestamp",
+    nullable: true,
+  })
+  lastSeenAt: Date | null;
+
+  /**
    * Messages sent by this user.
    *
    * There is no receivedMessages relationship anymore.

@@ -203,6 +203,17 @@ const ChatSidebar: React.FC<
     setConversationsLoading,
   ] = useState(false);
 
+  /**
+   * Contacts with at least one active
+   * connection right now.
+   */
+  const [
+    onlineUserIds,
+    setOnlineUserIds,
+  ] = useState<Set<number>>(
+    () => new Set(),
+  );
+
   /* ==========================================================
      REFS
   ========================================================== */
@@ -212,6 +223,9 @@ const ChatSidebar: React.FC<
 
   const conversationsRequestIdRef =
     useRef(0);
+
+  const conversationUserIdsRef =
+    useRef<number[]>([]);
 
   const socketRef =
     useRef<Socket | null>(null);
@@ -818,6 +832,84 @@ const ChatSidebar: React.FC<
       handleConversationRead,
     );
 
+    /* ========================================================
+       PRESENCE
+    ======================================================== */
+
+    const setUserOnline = (
+      userId: number,
+      isOnline: boolean,
+    ) => {
+      setOnlineUserIds((previous) => {
+        if (
+          previous.has(userId) ===
+          isOnline
+        ) {
+          return previous;
+        }
+
+        const next = new Set(previous);
+
+        if (isOnline) {
+          next.add(userId);
+        } else {
+          next.delete(userId);
+        }
+
+        return next;
+      });
+    };
+
+    const handlePresenceUpdate = (
+      data: {
+        userId: number;
+        isOnline: boolean;
+      },
+    ) => {
+      const userId = Number(
+        data?.userId,
+      );
+
+      if (Number.isFinite(userId)) {
+        setUserOnline(
+          userId,
+          Boolean(data.isOnline),
+        );
+      }
+    };
+
+    const requestPresence = () => {
+      for (const userId of conversationUserIdsRef.current) {
+        socket.emit(
+          "get_presence",
+          { userId },
+          (response?: {
+            success?: boolean;
+            isOnline?: boolean;
+          }) => {
+            if (response?.success) {
+              setUserOnline(
+                userId,
+                Boolean(
+                  response.isOnline,
+                ),
+              );
+            }
+          },
+        );
+      }
+    };
+
+    socket.on(
+      "presence_update",
+      handlePresenceUpdate,
+    );
+
+    socket.on(
+      "connect",
+      requestPresence,
+    );
+
     return () => {
       socket.off(
         "conversation_updated",
@@ -827,6 +919,11 @@ const ChatSidebar: React.FC<
       socket.off(
         "conversation_read",
         handleConversationRead,
+      );
+
+      socket.off(
+        "presence_update",
+        handlePresenceUpdate,
       );
 
       socket.off("connect");
@@ -851,6 +948,69 @@ const ChatSidebar: React.FC<
     senderId,
     selectedConversationId,
   ]);
+
+  /* ==========================================================
+     PRESENCE FOR NEW CONVERSATIONS
+  ========================================================== */
+
+  const conversationUserKey = conversations
+    .map((conversation) =>
+      Number(conversation.userId),
+    )
+    .filter((id) => Number.isFinite(id))
+    .sort((a, b) => a - b)
+    .join(",");
+
+  useEffect(() => {
+    const ids = conversationUserKey
+      ? conversationUserKey
+          .split(",")
+          .map(Number)
+      : [];
+
+    const previousIds = new Set(
+      conversationUserIdsRef.current,
+    );
+
+    conversationUserIdsRef.current = ids;
+
+    const socket = socketRef.current;
+
+    if (!socket?.connected) {
+      return;
+    }
+
+    for (const userId of ids) {
+      if (previousIds.has(userId)) {
+        continue;
+      }
+
+      socket.emit(
+        "get_presence",
+        { userId },
+        (response?: {
+          success?: boolean;
+          isOnline?: boolean;
+        }) => {
+          if (!response?.success) {
+            return;
+          }
+
+          setOnlineUserIds((previous) => {
+            const next = new Set(previous);
+
+            if (response.isOnline) {
+              next.add(userId);
+            } else {
+              next.delete(userId);
+            }
+
+            return next;
+          });
+        },
+      );
+    }
+  }, [conversationUserKey]);
 
   /* ==========================================================
      PUBLIC ID SEARCH
@@ -1690,7 +1850,16 @@ const ChatSidebar: React.FC<
                               }
                             />
 
-                            <Box className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-green-500 dark:border-gray-900" />
+                            {onlineUserIds.has(
+                              Number(
+                                conversation.userId,
+                              ),
+                            ) && (
+                              <Box
+                                aria-label="Online"
+                                className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-green-500 dark:border-gray-900"
+                              />
+                            )}
                           </Box>
 
                           {/* Name + Last Message */}

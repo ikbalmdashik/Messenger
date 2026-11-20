@@ -21,14 +21,21 @@ import {
 } from "framer-motion";
 
 import {
+  ArrowDown,
   ArrowLeft,
   BadgeAlert,
   BadgeCheck,
+  Ban,
   Check,
   CheckCheck,
   MessageSquare,
   Paperclip,
+  Pencil,
+  Reply,
   Send,
+  SmilePlus,
+  Trash2,
+  X,
 } from "lucide-react";
 
 import {
@@ -36,9 +43,11 @@ import {
 } from "react-icons/ai";
 
 import {
+  AlertDialog,
   Avatar,
   Badge,
   Box,
+  Button,
   Flex,
   IconButton,
   Text,
@@ -55,6 +64,18 @@ import API_ENDPOINTS, {
    TYPES
 ============================================================ */
 
+export interface MessageReaction {
+  userId: number;
+  emoji: string;
+}
+
+export interface ReplyPreview {
+  messageId: number;
+  senderId: number;
+  message: string;
+  isDeleted: boolean;
+}
+
 export interface ChatMessage {
   messageId: number;
   conversationId: number;
@@ -62,7 +83,140 @@ export interface ChatMessage {
   message: string;
   status: string;
   createdAt: string;
+  editedAt?: string | null;
+  isDeleted?: boolean;
+  replyTo?: ReplyPreview | null;
+  reactions?: MessageReaction[];
 }
+
+interface PresenceState {
+  isOnline: boolean;
+  lastSeenAt: string | null;
+}
+
+const QUICK_REACTIONS = [
+  "👍",
+  "❤️",
+  "😂",
+  "😮",
+  "😢",
+  "🙏",
+];
+
+/**
+ * How long after the last keystroke we tell
+ * the other side we stopped typing.
+ */
+const TYPING_IDLE_MS = 2500;
+
+/**
+ * Safety net in case a "stopped typing"
+ * event is lost.
+ */
+const TYPING_DISPLAY_TIMEOUT_MS = 6000;
+
+const formatLastSeen = (
+  timestamp: string | null,
+) => {
+  if (!timestamp) {
+    return "Offline";
+  }
+
+  const date = new Date(timestamp);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Offline";
+  }
+
+  const diffMs =
+    Date.now() - date.getTime();
+
+  const minutes = Math.floor(
+    diffMs / 60000,
+  );
+
+  if (minutes < 1) {
+    return "Last seen just now";
+  }
+
+  if (minutes < 60) {
+    return `Last seen ${minutes} min ago`;
+  }
+
+  const hours = Math.floor(
+    minutes / 60,
+  );
+
+  if (hours < 24) {
+    return `Last seen ${hours} h ago`;
+  }
+
+  return `Last seen ${date.toLocaleDateString(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+    },
+  )}`;
+};
+
+/**
+ * Group reactions as [{ emoji, count, mine }].
+ */
+const groupReactions = (
+  reactions: MessageReaction[] | undefined,
+  myId: number,
+) => {
+  const groups = new Map<
+    string,
+    {
+      emoji: string;
+      count: number;
+      mine: boolean;
+    }
+  >();
+
+  for (const reaction of reactions ?? []) {
+    const group = groups.get(
+      reaction.emoji,
+    ) ?? {
+      emoji: reaction.emoji,
+      count: 0,
+      mine: false,
+    };
+
+    group.count += 1;
+
+    if (
+      Number(reaction.userId) === myId
+    ) {
+      group.mine = true;
+    }
+
+    groups.set(reaction.emoji, group);
+  }
+
+  return [...groups.values()];
+};
+
+const STATUS_RANK: Record<string, number> = {
+  sent: 0,
+  delivered: 1,
+  seen: 2,
+};
+
+/**
+ * Only move a status forward
+ * (sent -> delivered -> seen).
+ */
+const upgradeStatus = (
+  current: string,
+  next: string,
+) =>
+  (STATUS_RANK[next] ?? 0) >
+  (STATUS_RANK[current?.toLowerCase()] ?? 0)
+    ? next
+    : current;
 
 export interface ConversationUser {
   userId: number;
@@ -238,7 +392,89 @@ const normalizeMessage = (
 
   createdAt:
     message.createdAt,
+
+  editedAt:
+    message.editedAt ?? null,
+
+  isDeleted: Boolean(
+    message.isDeleted,
+  ),
+
+  replyTo:
+    message.replyTo &&
+    Number.isFinite(
+      Number(
+        message.replyTo.messageId,
+      ),
+    )
+      ? {
+          messageId: Number(
+            message.replyTo.messageId,
+          ),
+          senderId: Number(
+            message.replyTo.senderId,
+          ),
+          message:
+            message.replyTo.message ?? "",
+          isDeleted: Boolean(
+            message.replyTo.isDeleted,
+          ),
+        }
+      : null,
+
+  reactions: Array.isArray(
+    message.reactions,
+  )
+    ? message.reactions
+    : [],
 });
+
+/* ============================================================
+   MESSAGE ACTION BUTTON
+============================================================ */
+
+const MessageActionButton = ({
+  label,
+  onClick,
+  danger = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) => (
+  <Tooltip content={label}>
+    <button
+      type="button"
+      aria-label={label}
+      onClick={(event) => {
+        event.stopPropagation();
+
+        onClick();
+      }}
+      className={`
+        flex
+        h-6
+        w-6
+        cursor-pointer
+        items-center
+        justify-center
+        rounded-full
+        text-[var(--gray-a11)]
+        transition-colors
+        hover:bg-[var(--gray-a4)]
+        ${
+          danger
+            ? "hover:text-rose-500"
+            : "hover:text-[var(--gray-a12)]"
+        }
+      `}
+    >
+      {children}
+    </button>
+  </Tooltip>
+);
 
 /* ============================================================
    MIDDLEBAR
@@ -291,6 +527,70 @@ const Middlebar: React.FC<
     socketError,
     setSocketError,
   ] = useState(false);
+
+  const [
+    replyingTo,
+    setReplyingTo,
+  ] = useState<ChatMessage | null>(null);
+
+  const [
+    editingMessage,
+    setEditingMessage,
+  ] = useState<ChatMessage | null>(null);
+
+  const [
+    pendingDelete,
+    setPendingDelete,
+  ] = useState<ChatMessage | null>(null);
+
+  const [
+    partnerTyping,
+    setPartnerTyping,
+  ] = useState(false);
+
+  const [
+    presence,
+    setPresence,
+  ] = useState<PresenceState | null>(null);
+
+  /**
+   * Message whose action bar / reaction
+   * picker is open (tap support on mobile).
+   */
+  const [
+    activeMessageId,
+    setActiveMessageId,
+  ] = useState<number | null>(null);
+
+  const [
+    reactionPickerFor,
+    setReactionPickerFor,
+  ] = useState<number | null>(null);
+
+  const [
+    highlightedMessageId,
+    setHighlightedMessageId,
+  ] = useState<number | null>(null);
+
+  const [
+    showScrollDown,
+    setShowScrollDown,
+  ] = useState(false);
+
+  /**
+   * Re-render once a minute so
+   * "Last seen X min ago" stays fresh.
+   */
+  const [, setClock] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(
+      () => setClock((value) => value + 1),
+      60000,
+    );
+
+    return () => clearInterval(timer);
+  }, []);
 
   /* ==========================================================
      REFS
@@ -346,6 +646,47 @@ const Middlebar: React.FC<
    */
   const offsetRef =
     useRef(0);
+
+  /**
+   * Values read inside socket handlers
+   * without re-creating the socket.
+   */
+  const senderIdRef =
+    useRef<number>(Number(senderId));
+
+  const partnerIdRef =
+    useRef<number | null>(
+      conversationUser?.userId ?? null,
+    );
+
+  useEffect(() => {
+    senderIdRef.current =
+      Number(senderId);
+  }, [senderId]);
+
+  useEffect(() => {
+    partnerIdRef.current =
+      conversationUser?.userId ?? null;
+  }, [conversationUser?.userId]);
+
+  /**
+   * Outgoing typing state.
+   */
+  const typingSentRef =
+    useRef(false);
+
+  const typingIdleTimerRef =
+    useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
+
+  /**
+   * Incoming typing safety timeout.
+   */
+  const partnerTypingTimerRef =
+    useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
 
   /* ==========================================================
      SELECTED USER
@@ -814,6 +1155,15 @@ const Middlebar: React.FC<
         ) {
           void loadOlderMessages();
         }
+
+        const distanceFromBottom =
+          container.scrollHeight -
+          container.scrollTop -
+          container.clientHeight;
+
+        setShowScrollDown(
+          distanceFromBottom > 400,
+        );
       };
 
     container.addEventListener(
@@ -963,6 +1313,46 @@ const Middlebar: React.FC<
                     numericConversationId,
                 },
               );
+
+              /**
+               * Load the partner's presence.
+               */
+              const partnerId =
+                partnerIdRef.current;
+
+              if (partnerId) {
+                socket.emit(
+                  "get_presence",
+                  {
+                    userId: partnerId,
+                  },
+                  (
+                    presenceResponse?: {
+                      success?: boolean;
+                      userId?: number;
+                      isOnline?: boolean;
+                      lastSeenAt?: string | null;
+                    },
+                  ) => {
+                    if (
+                      presenceResponse?.success &&
+                      Number(
+                        presenceResponse.userId,
+                      ) ===
+                        partnerIdRef.current
+                    ) {
+                      setPresence({
+                        isOnline: Boolean(
+                          presenceResponse.isOnline,
+                        ),
+                        lastSeenAt:
+                          presenceResponse.lastSeenAt ??
+                          null,
+                      });
+                    }
+                  },
+                );
+              }
             } else {
               console.log(
                 "Failed to join conversation:",
@@ -1055,7 +1445,257 @@ const Middlebar: React.FC<
             return updated;
           },
         );
+
+        /**
+         * Message from the other side while
+         * this conversation is open and visible
+         * -> it's read immediately.
+         */
+        if (
+          normalizedMessage.senderId !==
+          senderIdRef.current
+        ) {
+          setPartnerTyping(false);
+
+          if (
+            typeof document ===
+              "undefined" ||
+            document.visibilityState ===
+              "visible"
+          ) {
+            socket.emit(
+              "mark_conversation_read",
+              {
+                conversationId:
+                  numericConversationId,
+              },
+            );
+          }
+        }
       };
+
+    /* ========================================================
+       MESSAGE UPDATED (edit / delete / reactions)
+    ======================================================== */
+
+    const handleMessageUpdated =
+      (
+        incomingMessage: ChatMessage,
+      ) => {
+        if (!incomingMessage) {
+          return;
+        }
+
+        const updatedMessage =
+          normalizeMessage(
+            incomingMessage,
+          );
+
+        if (
+          updatedMessage.conversationId !==
+          numericConversationId
+        ) {
+          return;
+        }
+
+        setChats((previous) =>
+          previous.map((chat) => {
+            if (
+              chat.messageId ===
+              updatedMessage.messageId
+            ) {
+              return {
+                ...updatedMessage,
+                status: upgradeStatus(
+                  chat.status,
+                  updatedMessage.status,
+                ),
+              };
+            }
+
+            /**
+             * Keep reply previews in sync.
+             */
+            if (
+              chat.replyTo?.messageId ===
+              updatedMessage.messageId
+            ) {
+              return {
+                ...chat,
+                replyTo: {
+                  ...chat.replyTo,
+                  message:
+                    updatedMessage.message.slice(
+                      0,
+                      200,
+                    ),
+                  isDeleted: Boolean(
+                    updatedMessage.isDeleted,
+                  ),
+                },
+              };
+            }
+
+            return chat;
+          }),
+        );
+      };
+
+    /* ========================================================
+       READ / DELIVERY RECEIPTS
+    ======================================================== */
+
+    const upgradeMyMessages = (
+      nextStatus: string,
+    ) => {
+      setChats((previous) =>
+        previous.map((chat) =>
+          chat.senderId ===
+          senderIdRef.current
+            ? {
+                ...chat,
+                status: upgradeStatus(
+                  chat.status,
+                  nextStatus,
+                ),
+              }
+            : chat,
+        ),
+      );
+    };
+
+    const handleMessagesSeen = (data: {
+      conversationId: number;
+      readerId: number;
+    }) => {
+      if (
+        Number(data?.conversationId) !==
+          numericConversationId ||
+        Number(data?.readerId) ===
+          senderIdRef.current
+      ) {
+        return;
+      }
+
+      upgradeMyMessages("seen");
+    };
+
+    const handleMessagesDelivered =
+      (data: {
+        conversationId: number;
+        recipientId: number;
+      }) => {
+        if (
+          Number(
+            data?.conversationId,
+          ) !== numericConversationId ||
+          Number(data?.recipientId) ===
+            senderIdRef.current
+        ) {
+          return;
+        }
+
+        upgradeMyMessages("delivered");
+      };
+
+    /* ========================================================
+       TYPING
+    ======================================================== */
+
+    const handleTyping = (data: {
+      conversationId: number;
+      userId: number;
+      isTyping: boolean;
+    }) => {
+      if (
+        Number(data?.conversationId) !==
+          numericConversationId ||
+        Number(data?.userId) ===
+          senderIdRef.current
+      ) {
+        return;
+      }
+
+      if (
+        partnerTypingTimerRef.current
+      ) {
+        clearTimeout(
+          partnerTypingTimerRef.current,
+        );
+
+        partnerTypingTimerRef.current =
+          null;
+      }
+
+      setPartnerTyping(
+        Boolean(data.isTyping),
+      );
+
+      if (data.isTyping) {
+        partnerTypingTimerRef.current =
+          setTimeout(() => {
+            setPartnerTyping(false);
+          }, TYPING_DISPLAY_TIMEOUT_MS);
+      }
+    };
+
+    /* ========================================================
+       PRESENCE
+    ======================================================== */
+
+    const handlePresenceUpdate =
+      (data: {
+        userId: number;
+        isOnline: boolean;
+        lastSeenAt: string | null;
+      }) => {
+        if (
+          Number(data?.userId) !==
+          partnerIdRef.current
+        ) {
+          return;
+        }
+
+        setPresence({
+          isOnline: Boolean(
+            data.isOnline,
+          ),
+          lastSeenAt:
+            data.lastSeenAt ?? null,
+        });
+
+        if (!data.isOnline) {
+          setPartnerTyping(false);
+        }
+      };
+
+    /* ========================================================
+       TAB BECOMES VISIBLE -> READ
+    ======================================================== */
+
+    const handleVisibilityChange =
+      () => {
+        if (
+          document.visibilityState ===
+            "visible" &&
+          socket.connected &&
+          joinedConversationIdRef.current ===
+            numericConversationId
+        ) {
+          socket.emit(
+            "mark_conversation_read",
+            {
+              conversationId:
+                numericConversationId,
+            },
+          );
+        }
+      };
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange,
+    );
 
     /* ========================================================
        CONNECT ERROR
@@ -1124,11 +1764,51 @@ const Middlebar: React.FC<
       handleDisconnect,
     );
 
+    socket.on(
+      "message_updated",
+      handleMessageUpdated,
+    );
+
+    socket.on(
+      "messages_seen",
+      handleMessagesSeen,
+    );
+
+    socket.on(
+      "messages_delivered",
+      handleMessagesDelivered,
+    );
+
+    socket.on(
+      "typing",
+      handleTyping,
+    );
+
+    socket.on(
+      "presence_update",
+      handlePresenceUpdate,
+    );
+
     /* ========================================================
        CLEANUP
     ======================================================== */
 
     return () => {
+      /**
+       * Stop "typing..." on the other side
+       * before leaving the room.
+       */
+      if (
+        socket.connected &&
+        typingSentRef.current
+      ) {
+        socket.emit("typing", {
+          conversationId:
+            numericConversationId,
+          isTyping: false,
+        });
+      }
+
       if (
         socket.connected &&
         joinedConversationIdRef.current ===
@@ -1162,6 +1842,64 @@ const Middlebar: React.FC<
         "disconnect",
         handleDisconnect,
       );
+
+      socket.off(
+        "message_updated",
+        handleMessageUpdated,
+      );
+
+      socket.off(
+        "messages_seen",
+        handleMessagesSeen,
+      );
+
+      socket.off(
+        "messages_delivered",
+        handleMessagesDelivered,
+      );
+
+      socket.off(
+        "typing",
+        handleTyping,
+      );
+
+      socket.off(
+        "presence_update",
+        handlePresenceUpdate,
+      );
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
+
+      if (
+        partnerTypingTimerRef.current
+      ) {
+        clearTimeout(
+          partnerTypingTimerRef.current,
+        );
+
+        partnerTypingTimerRef.current =
+          null;
+      }
+
+      if (
+        typingIdleTimerRef.current
+      ) {
+        clearTimeout(
+          typingIdleTimerRef.current,
+        );
+
+        typingIdleTimerRef.current =
+          null;
+      }
+
+      typingSentRef.current = false;
+
+      setPartnerTyping(false);
+
+      setPresence(null);
 
       socket.disconnect();
 
@@ -1273,6 +2011,18 @@ const Middlebar: React.FC<
   useEffect(() => {
     setMessage("");
 
+    setReplyingTo(null);
+
+    setEditingMessage(null);
+
+    setPendingDelete(null);
+
+    setActiveMessageId(null);
+
+    setReactionPickerFor(null);
+
+    setShowScrollDown(false);
+
     if (
       textareaRef.current
     ) {
@@ -1282,6 +2032,301 @@ const Middlebar: React.FC<
   }, [
     conversationId,
   ]);
+
+  /* ==========================================================
+     TYPING (OUTGOING)
+  ========================================================== */
+
+  const emitTyping = useCallback(
+    (isTyping: boolean) => {
+      const socket = socketRef.current;
+
+      const numericConversationId =
+        Number(conversationId);
+
+      if (
+        !socket?.connected ||
+        !Number.isFinite(
+          numericConversationId,
+        )
+      ) {
+        return;
+      }
+
+      if (
+        typingSentRef.current ===
+        isTyping
+      ) {
+        return;
+      }
+
+      typingSentRef.current = isTyping;
+
+      socket.emit("typing", {
+        conversationId:
+          numericConversationId,
+        isTyping,
+      });
+    },
+    [conversationId],
+  );
+
+  const stopTyping = useCallback(() => {
+    if (typingIdleTimerRef.current) {
+      clearTimeout(
+        typingIdleTimerRef.current,
+      );
+
+      typingIdleTimerRef.current = null;
+    }
+
+    emitTyping(false);
+  }, [emitTyping]);
+
+  const handleUserTyping = useCallback(
+    (value: string) => {
+      /**
+       * Editing an old message is not
+       * "typing a new one".
+       */
+      if (editingMessage) {
+        return;
+      }
+
+      if (!value.trim()) {
+        stopTyping();
+
+        return;
+      }
+
+      emitTyping(true);
+
+      if (typingIdleTimerRef.current) {
+        clearTimeout(
+          typingIdleTimerRef.current,
+        );
+      }
+
+      typingIdleTimerRef.current =
+        setTimeout(() => {
+          typingIdleTimerRef.current =
+            null;
+
+          emitTyping(false);
+        }, TYPING_IDLE_MS);
+    },
+    [
+      editingMessage,
+      emitTyping,
+      stopTyping,
+    ],
+  );
+
+  /* ==========================================================
+     MESSAGE ACTIONS
+  ========================================================== */
+
+  const focusComposer = () => {
+    requestAnimationFrame(() => {
+      const textarea =
+        textareaRef.current;
+
+      if (!textarea) {
+        return;
+      }
+
+      textarea.focus();
+
+      textarea.style.height = "auto";
+
+      textarea.style.height = `${Math.min(
+        textarea.scrollHeight,
+        120,
+      )}px`;
+    });
+  };
+
+  const startReply = useCallback(
+    (chat: ChatMessage) => {
+      setEditingMessage(null);
+
+      setReplyingTo(chat);
+
+      setActiveMessageId(null);
+
+      setReactionPickerFor(null);
+
+      focusComposer();
+    },
+    [],
+  );
+
+  const startEdit = useCallback(
+    (chat: ChatMessage) => {
+      stopTyping();
+
+      setReplyingTo(null);
+
+      setEditingMessage(chat);
+
+      setMessage(chat.message);
+
+      setActiveMessageId(null);
+
+      setReactionPickerFor(null);
+
+      focusComposer();
+    },
+    [stopTyping],
+  );
+
+  const cancelComposerMode =
+    useCallback(() => {
+      if (editingMessage) {
+        setMessage("");
+      }
+
+      setEditingMessage(null);
+
+      setReplyingTo(null);
+    }, [editingMessage]);
+
+  const toggleReaction = useCallback(
+    (
+      messageId: number,
+      emoji: string,
+    ) => {
+      setReactionPickerFor(null);
+
+      setActiveMessageId(null);
+
+      socketRef.current?.emit(
+        "toggle_reaction",
+        {
+          messageId,
+          emoji,
+        },
+        (response?: {
+          success?: boolean;
+          message?: unknown;
+        }) => {
+          if (
+            response?.success === false
+          ) {
+            console.log(
+              "Reaction failed:",
+              response.message,
+            );
+          }
+        },
+      );
+    },
+    [],
+  );
+
+  const confirmDelete =
+    useCallback(() => {
+      const target = pendingDelete;
+
+      setPendingDelete(null);
+
+      if (!target) {
+        return;
+      }
+
+      socketRef.current?.emit(
+        "delete_message",
+        {
+          messageId: target.messageId,
+        },
+        (response?: {
+          success?: boolean;
+          message?: unknown;
+        }) => {
+          if (
+            response?.success === false
+          ) {
+            console.log(
+              "Delete failed:",
+              response.message,
+            );
+          }
+        },
+      );
+
+      if (
+        editingMessage?.messageId ===
+        target.messageId
+      ) {
+        setEditingMessage(null);
+
+        setMessage("");
+      }
+
+      if (
+        replyingTo?.messageId ===
+        target.messageId
+      ) {
+        setReplyingTo(null);
+      }
+    }, [
+      pendingDelete,
+      editingMessage,
+      replyingTo,
+    ]);
+
+  /**
+   * Scroll to the original message
+   * when a reply quote is clicked.
+   */
+  const jumpToMessage = useCallback(
+    (messageId: number) => {
+      const element =
+        document.getElementById(
+          `message-${messageId}`,
+        );
+
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+      setHighlightedMessageId(messageId);
+
+      setTimeout(() => {
+        setHighlightedMessageId(
+          (current) =>
+            current === messageId
+              ? null
+              : current,
+        );
+      }, 1600);
+    },
+    [],
+  );
+
+  const scrollToBottom =
+    useCallback(() => {
+      bottomRef.current?.scrollIntoView({
+        behavior: "smooth",
+      });
+    }, []);
+
+  const getSenderLabel = useCallback(
+    (id: number) =>
+      id === Number(senderId)
+        ? "You"
+        : conversationUser?.fullName ||
+          "User",
+    [
+      senderId,
+      conversationUser?.fullName,
+    ],
+  );
 
   /* ==========================================================
      SEND MESSAGE
@@ -1331,6 +2376,51 @@ const Middlebar: React.FC<
         return;
       }
 
+      /**
+       * EDIT MODE
+       */
+      if (editingMessage) {
+        const target = editingMessage;
+
+        if (
+          trimmedMessage !== target.message
+        ) {
+          socket.emit(
+            "edit_message",
+            {
+              messageId: target.messageId,
+              message: trimmedMessage,
+            },
+            (response?: {
+              success?: boolean;
+              message?: unknown;
+            }) => {
+              if (
+                response?.success === false
+              ) {
+                console.log(
+                  "Edit failed:",
+                  response.message,
+                );
+              }
+            },
+          );
+        }
+
+        setEditingMessage(null);
+
+        setMessage("");
+
+        if (textareaRef.current) {
+          textareaRef.current.style.height =
+            "auto";
+        }
+
+        return;
+      }
+
+      stopTyping();
+
       const payload:
         SendMessageRequest =
         {
@@ -1342,7 +2432,13 @@ const Middlebar: React.FC<
 
           status:
             "sent",
+
+          replyToMessageId:
+            replyingTo?.messageId ??
+            null,
         };
+
+      setReplyingTo(null);
 
       socket.emit(
         "send_message",
@@ -1381,6 +2477,9 @@ const Middlebar: React.FC<
     }, [
       message,
       conversationId,
+      editingMessage,
+      replyingTo,
+      stopTyping,
     ]);
 
   /* ==========================================================
@@ -1419,10 +2518,55 @@ const Middlebar: React.FC<
           event.preventDefault();
 
           handleSendMessage();
+
+          return;
+        }
+
+        if (
+          event.key === "Escape" &&
+          (replyingTo || editingMessage)
+        ) {
+          event.preventDefault();
+
+          cancelComposerMode();
+
+          return;
+        }
+
+        /**
+         * Arrow-up on an empty composer edits
+         * your last message (like Slack/Discord).
+         */
+        if (
+          event.key === "ArrowUp" &&
+          !message &&
+          !editingMessage
+        ) {
+          const myLast = [...chats]
+            .reverse()
+            .find(
+              (chat) =>
+                chat.senderId ===
+                  Number(senderId) &&
+                !chat.isDeleted,
+            );
+
+          if (myLast) {
+            event.preventDefault();
+
+            startEdit(myLast);
+          }
         }
       },
       [
         handleSendMessage,
+        replyingTo,
+        editingMessage,
+        cancelComposerMode,
+        message,
+        chats,
+        senderId,
+        startEdit,
       ],
     );
 
@@ -1547,23 +2691,42 @@ const Middlebar: React.FC<
               </IconButton>
             )}
 
-            <Avatar
-              size="2"
-              radius="full"
-              fallback={
-                selectedUser?.fullName
-                  ? selectedUser.fullName
-                      .slice(0, 2)
-                      .toUpperCase()
-                  : "U"
-              }
-              src={
-                selectedUser?.profilePicture ??
-                undefined
-              }
-              color="sky"
-              variant="soft"
-            />
+            <span className="relative inline-flex shrink-0">
+              <Avatar
+                size="2"
+                radius="full"
+                fallback={
+                  selectedUser?.fullName
+                    ? selectedUser.fullName
+                        .slice(0, 2)
+                        .toUpperCase()
+                    : "U"
+                }
+                src={
+                  selectedUser?.profilePicture ??
+                  undefined
+                }
+                color="sky"
+                variant="soft"
+              />
+
+              {presence?.isOnline && (
+                <span
+                  aria-label="Online"
+                  className="
+                    absolute
+                    -bottom-0.5
+                    -right-0.5
+                    h-3
+                    w-3
+                    rounded-full
+                    border-2
+                    border-[var(--color-background)]
+                    bg-emerald-500
+                  "
+                />
+              )}
+            </span>
 
             <Box className="min-w-0">
               <Flex
@@ -1615,14 +2778,44 @@ const Middlebar: React.FC<
                 )}
               </Flex>
 
-              {selectedUser?.publicId && (
+              {partnerTyping ? (
                 <Text
                   size="1"
-                  color="gray"
-                  className="block truncate"
+                  className="block truncate font-medium text-sky-500"
                 >
-                  @{selectedUser.publicId}
+                  typing…
                 </Text>
+              ) : presence ? (
+                <Text
+                  size="1"
+                  className={`block truncate ${
+                    presence.isOnline
+                      ? "text-emerald-500"
+                      : "text-[var(--gray-a10)]"
+                  }`}
+                >
+                  {presence.isOnline
+                    ? "Online"
+                    : formatLastSeen(
+                        presence.lastSeenAt,
+                      )}
+                  {selectedUser?.publicId && (
+                    <span className="text-[var(--gray-a9)]">
+                      {" "}
+                      · @{selectedUser.publicId}
+                    </span>
+                  )}
+                </Text>
+              ) : (
+                selectedUser?.publicId && (
+                  <Text
+                    size="1"
+                    color="gray"
+                    className="block truncate"
+                  >
+                    @{selectedUser.publicId}
+                  </Text>
+                )
               )}
             </Box>
           </Flex>
@@ -1683,16 +2876,28 @@ const Middlebar: React.FC<
           MESSAGE FEED
       ==================================================== */}
 
+      <div className="relative flex min-h-0 w-full flex-1 flex-col">
       <div
         ref={
           messagesContainerRef
         }
+        onClick={(event) => {
+          if (
+            event.target ===
+            event.currentTarget
+          ) {
+            setActiveMessageId(null);
+
+            setReactionPickerFor(null);
+          }
+        }}
         className="
           min-h-0
           w-full
           flex-1
           overflow-y-auto
           p-4
+          pt-6
         "
       >
         {/* Loading older messages */}
@@ -1826,12 +3031,32 @@ const Middlebar: React.FC<
                     chat.createdAt,
                   );
 
+                const isDeleted =
+                  Boolean(chat.isDeleted);
+
+                const reactionGroups =
+                  groupReactions(
+                    chat.reactions,
+                    Number(senderId),
+                  );
+
+                const actionsOpen =
+                  activeMessageId ===
+                    chat.messageId ||
+                  reactionPickerFor ===
+                    chat.messageId;
+
+                const isHighlighted =
+                  highlightedMessageId ===
+                  chat.messageId;
+
                 return (
                   <motion.div
                     key={
                       chat.messageId ||
                       `${chat.conversationId}-${index}`
                     }
+                    id={`message-${chat.messageId}`}
                     initial={{
                       opacity: 0,
                       y: 10,
@@ -1883,6 +3108,8 @@ const Middlebar: React.FC<
                       >
                         <div
                           className={`
+                            group
+                            relative
                             flex
                             max-w-[80%]
                             flex-col
@@ -1894,9 +3121,192 @@ const Middlebar: React.FC<
                             }
                           `}
                         >
+                          {/* ACTION BAR */}
+
+                          {!isDeleted && (
+                            <div
+                              className={`
+                                absolute
+                                -top-4
+                                z-20
+                                flex
+                                items-center
+                                gap-0.5
+                                rounded-full
+                                border
+                                border-[var(--gray-a4)]
+                                bg-[var(--color-panel-solid)]
+                                px-1
+                                py-0.5
+                                shadow-md
+                                transition-opacity
+                                duration-150
+                                ${
+                                  isMine
+                                    ? "right-2"
+                                    : "left-2"
+                                }
+                                ${
+                                  actionsOpen
+                                    ? "opacity-100"
+                                    : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
+                                }
+                              `}
+                            >
+                              <MessageActionButton
+                                label="React"
+                                onClick={() =>
+                                  setReactionPickerFor(
+                                    (current) =>
+                                      current ===
+                                      chat.messageId
+                                        ? null
+                                        : chat.messageId,
+                                  )
+                                }
+                              >
+                                <SmilePlus className="h-3.5 w-3.5" />
+                              </MessageActionButton>
+
+                              <MessageActionButton
+                                label="Reply"
+                                onClick={() =>
+                                  startReply(
+                                    chat,
+                                  )
+                                }
+                              >
+                                <Reply className="h-3.5 w-3.5" />
+                              </MessageActionButton>
+
+                              {isMine && (
+                                <>
+                                  <MessageActionButton
+                                    label="Edit"
+                                    onClick={() =>
+                                      startEdit(
+                                        chat,
+                                      )
+                                    }
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </MessageActionButton>
+
+                                  <MessageActionButton
+                                    label="Unsend"
+                                    danger
+                                    onClick={() => {
+                                      setActiveMessageId(
+                                        null,
+                                      );
+
+                                      setPendingDelete(
+                                        chat,
+                                      );
+                                    }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </MessageActionButton>
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {/* QUICK REACTION PICKER */}
+
+                          <AnimatePresence>
+                            {reactionPickerFor ===
+                              chat.messageId && (
+                              <motion.div
+                                initial={{
+                                  opacity: 0,
+                                  y: 6,
+                                  scale: 0.9,
+                                }}
+                                animate={{
+                                  opacity: 1,
+                                  y: 0,
+                                  scale: 1,
+                                }}
+                                exit={{
+                                  opacity: 0,
+                                  scale: 0.9,
+                                }}
+                                transition={{
+                                  duration: 0.12,
+                                }}
+                                className={`
+                                  absolute
+                                  -top-14
+                                  z-30
+                                  flex
+                                  gap-1
+                                  rounded-full
+                                  border
+                                  border-[var(--gray-a4)]
+                                  bg-[var(--color-panel-solid)]
+                                  px-2
+                                  py-1
+                                  shadow-lg
+                                  ${
+                                    isMine
+                                      ? "right-0"
+                                      : "left-0"
+                                  }
+                                `}
+                              >
+                                {QUICK_REACTIONS.map(
+                                  (emoji) => (
+                                    <button
+                                      key={emoji}
+                                      type="button"
+                                      aria-label={`React ${emoji}`}
+                                      onClick={(
+                                        event,
+                                      ) => {
+                                        event.stopPropagation();
+
+                                        toggleReaction(
+                                          chat.messageId,
+                                          emoji,
+                                        );
+                                      }}
+                                      className="
+                                        cursor-pointer
+                                        text-lg
+                                        leading-none
+                                        transition-transform
+                                        hover:scale-125
+                                      "
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ),
+                                )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+
                           {/* MESSAGE */}
 
                           <div
+                            onClick={() =>
+                              setActiveMessageId(
+                                (current) =>
+                                  current ===
+                                  chat.messageId
+                                    ? null
+                                    : chat.messageId,
+                              )
+                            }
+                            onDoubleClick={() => {
+                              if (!isDeleted) {
+                                toggleReaction(
+                                  chat.messageId,
+                                  "❤️",
+                                );
+                              }
+                            }}
                             className={`
                               max-w-full
                               break-words
@@ -1907,36 +3317,200 @@ const Middlebar: React.FC<
                               text-sm
                               shadow-sm
                               transition-all
+                              duration-300
                               ${
-                                isMine
+                                isHighlighted
+                                  ? "ring-2 ring-amber-400 ring-offset-2 ring-offset-[var(--color-background)]"
+                                  : ""
+                              }
+                              ${
+                                isDeleted
                                   ? `
-                                    rounded-br-xs
-                                    bg-sky-600
-                                    text-white
-                                  `
-                                  : `
-                                    rounded-bl-xs
                                     border
-                                    border-[var(--gray-a3)]
-                                    bg-slate-200/80
-                                    text-slate-900
-                                    dark:bg-slate-800/80
-                                    dark:text-slate-100
+                                    border-dashed
+                                    border-[var(--gray-a6)]
+                                    bg-transparent
+                                    text-[var(--gray-a10)]
+                                    shadow-none
                                   `
+                                  : isMine
+                                    ? `
+                                      rounded-br-xs
+                                      bg-sky-600
+                                      text-white
+                                    `
+                                    : `
+                                      rounded-bl-xs
+                                      border
+                                      border-[var(--gray-a3)]
+                                      bg-slate-200/80
+                                      text-slate-900
+                                      dark:bg-slate-800/80
+                                      dark:text-slate-100
+                                    `
                               }
                             `}
                           >
-                            <p
-                              className="
-                                min-w-0
-                                whitespace-pre-wrap
-                                break-words
-                                leading-relaxed
-                              "
-                            >
-                              {chat.message}
-                            </p>
+                            {/* REPLY QUOTE */}
+
+                            {chat.replyTo &&
+                              !isDeleted && (
+                                <button
+                                  type="button"
+                                  onClick={(
+                                    event,
+                                  ) => {
+                                    event.stopPropagation();
+
+                                    if (
+                                      chat.replyTo
+                                    ) {
+                                      jumpToMessage(
+                                        chat.replyTo
+                                          .messageId,
+                                      );
+                                    }
+                                  }}
+                                  className={`
+                                    mb-1.5
+                                    block
+                                    w-full
+                                    cursor-pointer
+                                    rounded-lg
+                                    border-l-4
+                                    px-2
+                                    py-1
+                                    text-left
+                                    text-xs
+                                    ${
+                                      isMine
+                                        ? "border-white/70 bg-white/15 text-white/90"
+                                        : "border-sky-500 bg-black/5 dark:bg-white/5"
+                                    }
+                                  `}
+                                >
+                                  <span className="block font-semibold">
+                                    {getSenderLabel(
+                                      chat.replyTo
+                                        .senderId,
+                                    )}
+                                  </span>
+
+                                  <span className="line-clamp-2 opacity-90">
+                                    {chat.replyTo
+                                      .isDeleted
+                                      ? "Message deleted"
+                                      : chat.replyTo
+                                          .message}
+                                  </span>
+                                </button>
+                              )}
+
+                            {isDeleted ? (
+                              <p
+                                className="
+                                  flex
+                                  items-center
+                                  gap-1.5
+                                  italic
+                                "
+                              >
+                                <Ban className="h-3.5 w-3.5 shrink-0" />
+
+                                {isMine
+                                  ? "You unsent a message"
+                                  : "This message was deleted"}
+                              </p>
+                            ) : (
+                              <p
+                                className="
+                                  min-w-0
+                                  whitespace-pre-wrap
+                                  break-words
+                                  leading-relaxed
+                                "
+                              >
+                                {chat.message}
+                              </p>
+                            )}
                           </div>
+
+                          {/* REACTIONS */}
+
+                          {reactionGroups.length >
+                            0 && (
+                            <div
+                              className={`
+                                z-10
+                                -mt-2
+                                flex
+                                flex-wrap
+                                gap-1
+                                ${
+                                  isMine
+                                    ? "mr-2 justify-end"
+                                    : "ml-2"
+                                }
+                              `}
+                            >
+                              {reactionGroups.map(
+                                (group) => (
+                                  <button
+                                    key={
+                                      group.emoji
+                                    }
+                                    type="button"
+                                    title={
+                                      group.mine
+                                        ? "Click to remove your reaction"
+                                        : "React with this"
+                                    }
+                                    onClick={() =>
+                                      toggleReaction(
+                                        chat.messageId,
+                                        group.emoji,
+                                      )
+                                    }
+                                    className={`
+                                      flex
+                                      cursor-pointer
+                                      items-center
+                                      gap-0.5
+                                      rounded-full
+                                      border
+                                      bg-[var(--color-panel-solid)]
+                                      px-1.5
+                                      py-0.5
+                                      text-xs
+                                      shadow-sm
+                                      transition-transform
+                                      hover:scale-105
+                                      ${
+                                        group.mine
+                                          ? "border-sky-500/70"
+                                          : "border-[var(--gray-a4)]"
+                                      }
+                                    `}
+                                  >
+                                    <span>
+                                      {
+                                        group.emoji
+                                      }
+                                    </span>
+
+                                    {group.count >
+                                      1 && (
+                                      <span className="text-[var(--gray-a11)]">
+                                        {
+                                          group.count
+                                        }
+                                      </span>
+                                    )}
+                                  </button>
+                                ),
+                              )}
+                            </div>
+                          )}
 
                           {/* TIME + STATUS */}
 
@@ -1953,13 +3527,39 @@ const Middlebar: React.FC<
                               px-1
                             "
                           >
-                            {isMine && (
-                              <StatusIcon
-                                status={
-                                  chat.status
-                                }
-                              />
-                            )}
+                            {isMine &&
+                              !isDeleted && (
+                                <Tooltip
+                                  content={
+                                    chat.status ===
+                                    "seen"
+                                      ? "Seen"
+                                      : chat.status ===
+                                          "delivered"
+                                        ? "Delivered"
+                                        : "Sent"
+                                  }
+                                >
+                                  <span className="inline-flex">
+                                    <StatusIcon
+                                      status={
+                                        chat.status
+                                      }
+                                    />
+                                  </span>
+                                </Tooltip>
+                              )}
+
+                            {chat.editedAt &&
+                              !isDeleted && (
+                                <Text
+                                  size="1"
+                                  color="gray"
+                                  className="text-[10px] italic"
+                                >
+                                  edited
+                                </Text>
+                              )}
 
                             <Text
                               size="1"
@@ -1982,7 +3582,114 @@ const Middlebar: React.FC<
           </AnimatePresence>
         )}
 
+        {/* TYPING INDICATOR */}
+
+        <AnimatePresence>
+          {partnerTyping && (
+            <motion.div
+              key="typing-indicator"
+              initial={{
+                opacity: 0,
+                y: 8,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              exit={{
+                opacity: 0,
+                y: 8,
+              }}
+              transition={{
+                duration: 0.15,
+              }}
+              className="mb-2 flex justify-start"
+            >
+              <div
+                aria-label={`${
+                  selectedUser?.fullName ||
+                  "User"
+                } is typing`}
+                className="
+                  flex
+                  items-center
+                  gap-1
+                  rounded-2xl
+                  rounded-bl-xs
+                  border
+                  border-[var(--gray-a3)]
+                  bg-slate-200/80
+                  px-3.5
+                  py-3
+                  dark:bg-slate-800/80
+                "
+              >
+                {[0, 150, 300].map(
+                  (delay) => (
+                    <span
+                      key={delay}
+                      className="
+                        h-1.5
+                        w-1.5
+                        animate-bounce
+                        rounded-full
+                        bg-slate-500
+                        dark:bg-slate-400
+                      "
+                      style={{
+                        animationDelay: `${delay}ms`,
+                      }}
+                    />
+                  ),
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div ref={bottomRef} />
+      </div>
+
+      {/* SCROLL TO LATEST */}
+
+      <AnimatePresence>
+        {showScrollDown && (
+          <motion.div
+            initial={{
+              opacity: 0,
+              scale: 0.8,
+            }}
+            animate={{
+              opacity: 1,
+              scale: 1,
+            }}
+            exit={{
+              opacity: 0,
+              scale: 0.8,
+            }}
+            className="
+              pointer-events-none
+              absolute
+              bottom-4
+              right-4
+              z-20
+            "
+          >
+            <IconButton
+              type="button"
+              size="2"
+              radius="full"
+              variant="solid"
+              color="gray"
+              aria-label="Scroll to latest message"
+              onClick={scrollToBottom}
+              className="pointer-events-auto cursor-pointer shadow-lg"
+            >
+              <ArrowDown className="h-4 w-4" />
+            </IconButton>
+          </motion.div>
+        )}
+      </AnimatePresence>
       </div>
 
       {/* ====================================================
@@ -1997,6 +3704,67 @@ const Middlebar: React.FC<
           border-[var(--gray-a4)]
         "
       >
+        {(replyingTo ||
+          editingMessage) && (
+          <Flex
+            align="center"
+            gap="2"
+            className="
+              mb-2
+              rounded
+              border-l-4
+              border-sky-500
+              bg-[var(--gray-a2)]
+              px-3
+              py-1.5
+            "
+          >
+            {editingMessage ? (
+              <Pencil className="h-4 w-4 shrink-0 text-sky-500" />
+            ) : (
+              <Reply className="h-4 w-4 shrink-0 text-sky-500" />
+            )}
+
+            <Box className="min-w-0 flex-1">
+              <Text
+                size="1"
+                weight="bold"
+                className="block text-sky-600 dark:text-sky-400"
+              >
+                {editingMessage
+                  ? "Editing message"
+                  : `Replying to ${getSenderLabel(
+                      replyingTo
+                        ? replyingTo.senderId
+                        : 0,
+                    )}`}
+              </Text>
+
+              <Text
+                size="1"
+                color="gray"
+                className="block truncate"
+              >
+                {(editingMessage ??
+                  replyingTo)?.message ||
+                  "Message deleted"}
+              </Text>
+            </Box>
+
+            <IconButton
+              type="button"
+              size="1"
+              variant="ghost"
+              color="gray"
+              aria-label="Cancel"
+              onClick={cancelComposerMode}
+              className="shrink-0 cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </IconButton>
+          </Flex>
+        )}
+
         <Flex
           align="center"
           gap="2"
@@ -2045,6 +3813,10 @@ const Middlebar: React.FC<
                 event.target.value,
               );
 
+              handleUserTyping(
+                event.target.value,
+              );
+
               event.target.style.height =
                 "auto";
 
@@ -2058,7 +3830,12 @@ const Middlebar: React.FC<
             onKeyDown={
               handleKeyDown
             }
-            placeholder="Write a message..."
+            onBlur={stopTyping}
+            placeholder={
+              editingMessage
+                ? "Edit your message..."
+                : "Write a message..."
+            }
             rows={1}
             disabled={
               !socketConnected
@@ -2116,15 +3893,73 @@ const Middlebar: React.FC<
               }
             `}
           >
-            <Send
-              className="
-                h-4
-                w-4
-              "
-            />
+            {editingMessage ? (
+              <Check
+                className="
+                  h-4
+                  w-4
+                "
+              />
+            ) : (
+              <Send
+                className="
+                  h-4
+                  w-4
+                "
+              />
+            )}
           </IconButton>
         </Flex>
       </Box>
+
+      {/* ====================================================
+          UNSEND CONFIRMATION
+      ==================================================== */}
+
+      <AlertDialog.Root
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDelete(null);
+          }
+        }}
+      >
+        <AlertDialog.Content maxWidth="400px">
+          <AlertDialog.Title>
+            Unsend message?
+          </AlertDialog.Title>
+
+          <AlertDialog.Description size="2">
+            This removes the message for
+            everyone in the conversation.
+            This can&apos;t be undone.
+          </AlertDialog.Description>
+
+          <Flex
+            gap="3"
+            mt="4"
+            justify="end"
+          >
+            <AlertDialog.Cancel>
+              <Button
+                variant="soft"
+                color="gray"
+              >
+                Cancel
+              </Button>
+            </AlertDialog.Cancel>
+
+            <AlertDialog.Action>
+              <Button
+                color="red"
+                onClick={confirmDelete}
+              >
+                Unsend
+              </Button>
+            </AlertDialog.Action>
+          </Flex>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
     </div>
   );
 };

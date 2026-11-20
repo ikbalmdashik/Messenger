@@ -29,6 +29,12 @@ export class ChatController {
     @Req() request: AuthenticatedRequest,
     @Body("conversationId")
     conversationId: number,
+
+    @Body("limit")
+    limit?: number,
+
+    @Body("offset")
+    offset?: number,
   ) {
     if (
       conversationId === undefined ||
@@ -55,6 +61,8 @@ export class ChatController {
     return await this.chatService.GetConversation(
       Number(userId),
       Number(conversationId),
+      limit,
+      offset,
     );
   }
 
@@ -74,6 +82,9 @@ export class ChatController {
 
     @Body("status")
     status: string,
+
+    @Body("replyToMessageId")
+    replyToMessageId?: number,
   ) {
     if (
       conversationId === undefined ||
@@ -102,6 +113,7 @@ export class ChatController {
       Number(conversationId),
       message,
       status || "sent",
+      replyToMessageId ?? null,
     );
   }
 
@@ -115,6 +127,12 @@ export class ChatController {
 
     @Body("conversationId")
     conversationId: number,
+
+    @Body("limit")
+    limit?: number,
+
+    @Body("offset")
+    offset?: number,
   ) {
     if (
       conversationId === undefined ||
@@ -141,6 +159,8 @@ export class ChatController {
     return await this.chatService.GetMessages(
       Number(userId),
       Number(conversationId),
+      limit,
+      offset,
     );
   }
 }
