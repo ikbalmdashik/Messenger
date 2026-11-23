@@ -21,8 +21,11 @@ import {
 } from "../conversation/entities/conversation.entity";
 
 import {
+  activeSuspension,
   ConversationParticipantEntity,
+  describeDuration,
   ParticipantRole,
+  suspensionEnd,
 } from "../conversation/entities/conversation-participant.entity";
 
 import { ChatService } from "../chat.service";
@@ -47,6 +50,8 @@ export interface GroupMember {
   isEmailVerified: boolean;
   role: ParticipantRole;
   joinedAt: Date;
+  /** Active suspension end, or null. */
+  suspendedUntil: Date | null;
 }
 
 export interface GroupDetails {
@@ -321,6 +326,8 @@ export class GroupService {
           participant.user.isEmailVerified,
         role: participant.role ?? "MEMBER",
         joinedAt: participant.joinedAt,
+        suspendedUntil:
+          activeSuspension(participant),
       }))
       .sort((a, b) => {
         if (a.role !== b.role) {
@@ -686,17 +693,74 @@ export class GroupService {
   }
 
   /**
-   * Admins can remove members; only the group
-   * creator can remove other admins.
+   * Admins can remove / suspend members; only the
+   * group creator can act on other admins, and
+   * nobody can act on the creator or themselves.
    */
+  private async loadModerationTargets(
+    conversation: ConversationEntity,
+    actorId: number,
+    rawUserIds: unknown,
+    verb: string,
+  ) {
+    const userIds = this.cleanUserIds(rawUserIds);
+
+    if (userIds.length === 0) {
+      throw new BadRequestException(
+        "Select at least one member.",
+      );
+    }
+
+    if (userIds.includes(Number(actorId))) {
+      throw new BadRequestException(
+        `You can't ${verb} yourself.`,
+      );
+    }
+
+    const targets =
+      await this.participantRepository.find({
+        where: {
+          conversationId:
+            conversation.conversationId,
+          userId: In(userIds),
+        },
+      });
+
+    if (targets.length !== userIds.length) {
+      throw new NotFoundException(
+        "Some selected people are not in this group.",
+      );
+    }
+
+    for (const target of targets) {
+      if (
+        Number(target.userId) ===
+        Number(conversation.createdById)
+      ) {
+        throw new ForbiddenException(
+          `The group creator can't be ${verb === "remove" ? "removed" : "suspended"}.`,
+        );
+      }
+
+      if (
+        target.role === "ADMIN" &&
+        Number(actorId) !==
+          Number(conversation.createdById)
+      ) {
+        throw new ForbiddenException(
+          `Only the group creator can ${verb} another admin.`,
+        );
+      }
+    }
+
+    return targets;
+  }
+
   async removeMember(
     userId: number,
     conversationId: number,
     targetUserId: number,
   ) {
-    const { conversation, me } =
-      await this.loadGroup(conversationId, userId);
-
     if (Number(targetUserId) === Number(userId)) {
       return await this.leaveGroup(
         userId,
@@ -704,51 +768,48 @@ export class GroupService {
       );
     }
 
+    return await this.removeMembers(
+      userId,
+      conversationId,
+      [targetUserId],
+    );
+  }
+
+  async removeMembers(
+    userId: number,
+    conversationId: number,
+    rawUserIds: unknown,
+  ) {
+    const { conversation, me } =
+      await this.loadGroup(conversationId, userId);
+
     this.requireAdmin(me);
 
-    const target =
-      await this.participantRepository.findOne({
-        where: {
-          conversationId:
-            conversation.conversationId,
-          userId: Number(targetUserId),
-        },
-      });
-
-    if (!target) {
-      throw new NotFoundException(
-        "That person is not in this group.",
+    const targets =
+      await this.loadModerationTargets(
+        conversation,
+        userId,
+        rawUserIds,
+        "remove",
       );
-    }
 
-    if (
-      Number(target.userId) ===
-      Number(conversation.createdById)
-    ) {
-      throw new ForbiddenException(
-        "The group creator can't be removed.",
-      );
-    }
+    const targetIds = targets.map((target) =>
+      Number(target.userId),
+    );
 
-    if (
-      target.role === "ADMIN" &&
-      Number(userId) !==
-        Number(conversation.createdById)
-    ) {
-      throw new ForbiddenException(
-        "Only the group creator can remove another admin.",
-      );
-    }
+    const targetNames = await Promise.all(
+      targetIds.map((id) => this.userName(id)),
+    );
 
-    await this.participantRepository.remove(target);
+    await this.participantRepository.remove(targets);
 
     this.chatGateway.removeUsersFromConversationRoom(
-      [Number(targetUserId)],
+      targetIds,
       conversation.conversationId,
     );
 
     this.chatGateway.emitToUsers(
-      [Number(targetUserId)],
+      targetIds,
       "group_removed",
       {
         conversationId:
@@ -757,16 +818,125 @@ export class GroupService {
       },
     );
 
-    const [actorName, targetName] =
+    const actorName = await this.userName(userId);
+
+    return await this.announce(
+      conversation.conversationId,
+      userId,
+      `${actorName} removed ${this.formatNames(targetNames)}`,
+    );
+  }
+
+  /**
+   * Stop members from sending messages for a
+   * while (`durationMinutes`; null / 0 = until
+   * lifted).
+   */
+  async suspendMembers(
+    userId: number,
+    conversationId: number,
+    rawUserIds: unknown,
+    durationMinutes: unknown,
+  ) {
+    const { conversation, me } =
+      await this.loadGroup(conversationId, userId);
+
+    this.requireAdmin(me);
+
+    const until = suspensionEnd(durationMinutes);
+
+    if (Number.isNaN(until.getTime())) {
+      throw new BadRequestException(
+        "Choose a valid suspension length.",
+      );
+    }
+
+    const targets =
+      await this.loadModerationTargets(
+        conversation,
+        userId,
+        rawUserIds,
+        "suspend",
+      );
+
+    for (const target of targets) {
+      target.suspendedUntil = until;
+      target.suspendedById = Number(userId);
+    }
+
+    await this.participantRepository.save(targets);
+
+    const [actorName, ...targetNames] =
       await Promise.all([
         this.userName(userId),
-        this.userName(targetUserId),
+        ...targets.map((target) =>
+          this.userName(target.userId),
+        ),
       ]);
 
     return await this.announce(
       conversation.conversationId,
       userId,
-      `${actorName} removed ${targetName}`,
+      `${actorName} suspended ${this.formatNames(targetNames)} from sending messages ${describeDuration(durationMinutes)}`,
+    );
+  }
+
+  /**
+   * Any admin can lift a suspension at any time.
+   */
+  async unsuspendMembers(
+    userId: number,
+    conversationId: number,
+    rawUserIds: unknown,
+  ) {
+    const { conversation, me } =
+      await this.loadGroup(conversationId, userId);
+
+    this.requireAdmin(me);
+
+    const userIds = this.cleanUserIds(rawUserIds);
+
+    if (userIds.length === 0) {
+      throw new BadRequestException(
+        "Select at least one member.",
+      );
+    }
+
+    const targets = (
+      await this.participantRepository.find({
+        where: {
+          conversationId:
+            conversation.conversationId,
+          userId: In(userIds),
+        },
+      })
+    ).filter((target) => activeSuspension(target));
+
+    if (targets.length === 0) {
+      return await this.buildDetails(
+        conversation.conversationId,
+      );
+    }
+
+    for (const target of targets) {
+      target.suspendedUntil = null;
+      target.suspendedById = null;
+    }
+
+    await this.participantRepository.save(targets);
+
+    const [actorName, ...targetNames] =
+      await Promise.all([
+        this.userName(userId),
+        ...targets.map((target) =>
+          this.userName(target.userId),
+        ),
+      ]);
+
+    return await this.announce(
+      conversation.conversationId,
+      userId,
+      `${actorName} lifted the suspension of ${this.formatNames(targetNames)}`,
     );
   }
 
@@ -845,6 +1015,12 @@ export class GroupService {
     }
 
     target.role = role;
+
+    if (role === "ADMIN") {
+      // Admins can't stay suspended.
+      target.suspendedUntil = null;
+      target.suspendedById = null;
+    }
 
     await this.participantRepository.save(target);
 

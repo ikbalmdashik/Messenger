@@ -23,6 +23,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from "bcrypt";
 import { customAlphabet } from 'nanoid';
 import { AuthLinkAction } from '@/mailer/mail.service';
+import { SessionEventsService } from './session-events.service';
 
 const MAX_EDUCATION_ENTRIES = 10;
 const MAX_SOCIAL_LINKS = 8;
@@ -131,8 +132,34 @@ export class AuthService {
     @InjectRepository(UserBlockEntity)
     private blockRepository: Repository<UserBlockEntity>,
 
-    private jwtService: JwtService
+    private jwtService: JwtService,
+
+    private sessionEvents: SessionEventsService,
   ) { };
+
+  /**
+   * Expire every active session of a user (deactivate,
+   * delete) and tell the affected browsers.
+   */
+  private async ExpireAllSessions(userId: number) {
+    const sessions = await this.userSessionRepository.find({
+      where: { userId: Number(userId), expiresAt: MoreThan(new Date()) },
+      select: { sessionId: true, userId: true },
+    });
+
+    await this.userSessionRepository.update(
+      { userId: Number(userId), expiresAt: MoreThan(new Date()) },
+      { expiresAt: new Date() },
+    );
+
+    for (const session of sessions) {
+      this.sessionEvents.emit({
+        type: 'revoked',
+        userId: session.userId,
+        sessionId: session.sessionId,
+      });
+    }
+  }
 
   //check wether email is exist or not
   async IsEmailExist(email: string) {
@@ -477,6 +504,12 @@ export class AuthService {
       updatedAt: new Date(),
     });
 
+    this.sessionEvents.emit({
+      type: 'created',
+      userId: user.userId,
+      sessionId: newSession.sessionId,
+    });
+
     return { userId: user.userId, access_token: newSession.tokenIdentifier };
   }
 
@@ -495,6 +528,12 @@ export class AuthService {
     session.lastActiveAt = new Date();
 
     await this.userSessionRepository.save(session);
+
+    this.sessionEvents.emit({
+      type: 'revoked',
+      userId: session.userId,
+      sessionId: session.sessionId,
+    });
   }
 
   async change_password(token: string, newPassword: string) {
@@ -915,6 +954,12 @@ export class AuthService {
     session.expiresAt = new Date();
     await this.userSessionRepository.save(session);
 
+    this.sessionEvents.emit({
+      type: 'revoked',
+      userId: session.userId,
+      sessionId: session.sessionId,
+    });
+
     return { success: true };
   }
 
@@ -942,6 +987,14 @@ export class AuthService {
     }
 
     await this.userSessionRepository.save(others);
+
+    for (const session of others) {
+      this.sessionEvents.emit({
+        type: 'revoked',
+        userId: session.userId,
+        sessionId: session.sessionId,
+      });
+    }
 
     return { success: true, revoked: others.length };
   }
@@ -980,10 +1033,7 @@ export class AuthService {
     );
 
     // Sign out everywhere.
-    await this.userSessionRepository.update(
-      { userId: Number(userId), expiresAt: MoreThan(new Date()) },
-      { expiresAt: new Date() },
-    );
+    await this.ExpireAllSessions(userId);
 
     return { success: true };
   }
@@ -1328,10 +1378,7 @@ export class AuthService {
   async DeleteMyAccount(userId: number, verificationToken: unknown) {
     await this.VerifyActionToken(userId, verificationToken, 'DELETE_ACCOUNT');
 
-    await this.userSessionRepository.update(
-      { userId: Number(userId) },
-      { expiresAt: new Date() },
-    );
+    await this.ExpireAllSessions(userId);
 
     await this.userRepository.delete(Number(userId));
 

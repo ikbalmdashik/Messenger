@@ -25,6 +25,9 @@ import API_ENDPOINTS, {
 import Routes from "@/app/routes/routes";
 import { getErrorMessage } from "@/app/lib/apiError";
 import { initialsOf } from "@/app/lib/profile";
+import { broadcastAuth } from "@/app/lib/session";
+import useConfirm from "@/app/components/shared/useConfirm";
+import useSessionEvents from "@/app/lib/useSessionEvents";
 
 interface SavedAccountsProps {
   /**
@@ -33,6 +36,8 @@ interface SavedAccountsProps {
    */
   onNeedsPassword: (email: string) => void;
   onError: (message: string) => void;
+  /** Called whenever the list is (re)loaded. */
+  onAccountsChange?: (accounts: SavedAccount[]) => void;
 }
 
 /**
@@ -42,10 +47,13 @@ interface SavedAccountsProps {
 const SavedAccounts: React.FC<SavedAccountsProps> = ({
   onNeedsPassword,
   onError,
+  onAccountsChange,
 }) => {
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+
+  const { confirm, confirmDialog } = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -58,17 +66,25 @@ const SavedAccounts: React.FC<SavedAccountsProps> = ({
       const list = response.data?.accounts ?? [];
 
       setAccounts(list);
+      onAccountsChange?.(list);
 
       // Open by default when there is something to pick.
       setOpen((current) => current || list.length > 0);
     } catch {
       setAccounts([]);
+      onAccountsChange?.([]);
     }
-  }, []);
+  }, [onAccountsChange]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A saved account logged out elsewhere: refresh.
+  useSessionEvents({
+    trackActiveSession: false,
+    onSavedSessionRevoked: () => void load(),
+  });
 
   const choose = async (account: SavedAccount) => {
     if (!account.isSignedIn) {
@@ -85,6 +101,7 @@ const SavedAccounts: React.FC<SavedAccountsProps> = ({
         { withCredentials: true },
       );
 
+      broadcastAuth("ACCOUNT_SWITCHED");
       window.location.assign(Routes.Chat);
     } catch (error) {
       onError(getErrorMessage(error, "Couldn't open that account."));
@@ -95,6 +112,23 @@ const SavedAccounts: React.FC<SavedAccountsProps> = ({
   };
 
   const forget = async (account: SavedAccount) => {
+    const ok = await confirm({
+      title: `Remove ${account.fullName}?`,
+      description: `${account.email} will be removed from this device.`,
+      consequences: [
+        ...(account.isSignedIn
+          ? ["It will be signed out of this browser."]
+          : []),
+        "You'll need your password or a code to log in to it again.",
+      ],
+      confirmLabel: "Remove",
+      danger: true,
+    });
+
+    if (!ok) {
+      return;
+    }
+
     try {
       setBusyId(account.userId);
 
@@ -117,14 +151,17 @@ const SavedAccounts: React.FC<SavedAccountsProps> = ({
   }
 
   return (
+    <>
     <Card mt="4">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="flex w-full cursor-pointer items-center gap-2 text-left"
+        className="flex w-full cursor-pointer items-center gap-3 px-2 text-left"
         aria-expanded={open}
       >
-        <UsersRound size={16} className="text-[var(--gray-10)]" />
+        <Flex width="32px" justify="center" className="shrink-0">
+          <UsersRound size={16} className="text-[var(--gray-10)]" />
+        </Flex>
         <Text size="2" weight="medium" className="flex-1">
           Saved accounts ({accounts.length})
         </Text>
@@ -162,11 +199,11 @@ const SavedAccounts: React.FC<SavedAccountsProps> = ({
                 </Box>
 
                 {account.isSignedIn ? (
-                  <Badge color="green" variant="soft">
+                  <Badge color="green" variant="soft" className="shrink-0">
                     {account.isActive ? "Active" : "Signed in"}
                   </Badge>
                 ) : (
-                  <Badge color="gray" variant="soft">
+                  <Badge color="gray" variant="soft" className="shrink-0">
                     Password needed
                   </Badge>
                 )}
@@ -176,8 +213,9 @@ const SavedAccounts: React.FC<SavedAccountsProps> = ({
                 <Tooltip content="Remove from this device">
                   <IconButton
                     size="1"
-                    variant="ghost"
+                    variant="soft"
                     color="gray"
+                    className="shrink-0"
                     aria-label={`Remove ${account.fullName}`}
                     disabled={busyId !== null}
                     onClick={() => void forget(account)}
@@ -189,15 +227,17 @@ const SavedAccounts: React.FC<SavedAccountsProps> = ({
             </Flex>
           ))}
 
-          <Text size="1" color="gray" mt="1">
+          <Text size="1" color="gray" mt="1" className="px-2">
             Signed-in accounts open right away. Others ask for your
             password.
           </Text>
 
           <Button
-            variant="ghost"
-            size="1"
-            mt="1"
+            variant="soft"
+            color="gray"
+            size="2"
+            mt="2"
+            style={{ width: "100%" }}
             onClick={() => setOpen(false)}
           >
             Use another account
@@ -205,6 +245,9 @@ const SavedAccounts: React.FC<SavedAccountsProps> = ({
         </Flex>
       )}
     </Card>
+
+    {confirmDialog}
+    </>
   );
 };
 

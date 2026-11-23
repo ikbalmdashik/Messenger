@@ -25,6 +25,7 @@ import API_ENDPOINTS, {
 } from "@/app/routes/api";
 
 import FullScreenSpinner from "../spinner";
+import AuthRequired from "../shared/AuthRequired";
 
 import {
   Button,
@@ -202,6 +203,35 @@ const ChatComponent = () => {
 
   const [rightWidth, setRightWidth] =
     useState(25);
+
+  /**
+   * Desktop: details panel shown or hidden from the
+   * chat header. Remembered per browser.
+   */
+  const [rightbarOpen, setRightbarOpen] =
+    useState(true);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("chat.rightbarOpen") === "0") {
+        setRightbarOpen(false);
+      }
+    } catch {
+      // Storage unavailable: default to open.
+    }
+  }, []);
+
+  const toggleRightbar = useCallback(() => {
+    setRightbarOpen((open) => {
+      try {
+        localStorage.setItem("chat.rightbarOpen", open ? "0" : "1");
+      } catch {
+        // Not remembered; still toggles.
+      }
+
+      return !open;
+    });
+  }, []);
 
 
   const router = useRouter();
@@ -795,36 +825,7 @@ const ChatComponent = () => {
   ) {
 
     return (
-      <div className="h-[100dvh] flex items-center justify-center">
-
-        <div className="text-center">
-
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            Authentication required
-          </h2>
-
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            Please log in to access the chat.
-          </p>
-
-          <Button
-            mt="2"
-            style={{
-              width: "100%",
-            }}
-            className="text-xl"
-            onClick={() => {
-              router.push(
-                Routes.Login
-              );
-            }}
-          >
-            Log In
-          </Button>
-
-        </div>
-
-      </div>
+      <AuthRequired what="the chat" />
     );
 
   }
@@ -1294,6 +1295,7 @@ const ChatComponent = () => {
                 conversationUser?.publicId ??
                 null
               }
+              conversationId={conversationId}
               onBack={() => {
 
                 setShowMobileProfile(
@@ -1320,7 +1322,10 @@ const ChatComponent = () => {
         ================================================== */}
 
         <div
-          className="h-full min-h-0 flex flex-col border-r"
+          // shrink-0 + min-w-0 + overflow-hidden: the
+          // width only changes with the resizer, never
+          // with long message previews.
+          className="h-full min-h-0 min-w-0 shrink-0 overflow-hidden flex flex-col border-r"
           style={{
             width:
               `${sidebarWidth}%`,
@@ -1361,10 +1366,11 @@ const ChatComponent = () => {
         ================================================== */}
 
         <div
-          className="h-full min-h-0 flex flex-col"
+          className="h-full min-h-0 min-w-0 shrink-0 overflow-hidden flex flex-col"
           style={{
+            // Closed rightbar: the chat takes its space.
             width:
-              `${middleWidth}%`,
+              `${rightbarOpen ? middleWidth : middleWidth + rightWidth}%`,
           }}
         >
 
@@ -1389,6 +1395,8 @@ const ChatComponent = () => {
               handleGroupChange
             }
             selfDeactivated={selfDeactivated}
+            rightbarOpen={rightbarOpen}
+            onToggleRightbar={toggleRightbar}
           />
 
         </div>
@@ -1398,6 +1406,7 @@ const ChatComponent = () => {
             RIGHT RESIZER
         ================================================== */}
 
+        {rightbarOpen && (<>
         <div
           onMouseDown={() => {
             setDragging(
@@ -1413,7 +1422,7 @@ const ChatComponent = () => {
         ================================================== */}
 
         <div
-          className="h-full min-h-0 flex flex-col border-l"
+          className="h-full min-h-0 min-w-0 shrink-0 overflow-hidden flex flex-col border-l"
           style={{
             width:
               `${rightWidth}%`,
@@ -1443,15 +1452,12 @@ const ChatComponent = () => {
                 conversationUser?.publicId ??
                 null
               }
-              onBack={() => {
-                setShowMobileProfile(
-                  false
-                );
-              }}
+              conversationId={conversationId}
             />
           )}
 
         </div>
+        </>)}
 
       </div>
 

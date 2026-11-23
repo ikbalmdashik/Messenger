@@ -355,6 +355,19 @@ export interface GroupMember {
   isEmailVerified: boolean;
   role: GroupRole;
   joinedAt: string;
+  /** Can't send messages until then (null = not suspended). */
+  suspendedUntil?: string | null;
+}
+
+/**
+ * DIRECT chats: either side can suspend the
+ * other from sending messages for a while.
+ */
+export interface DirectSuspensionStatus {
+  conversationId: number;
+  otherUserId: number;
+  mySuspendedUntil: string | null;
+  theirSuspendedUntil: string | null;
 }
 
 export interface GroupDetails {
@@ -734,6 +747,15 @@ const API_ENDPOINTS = {
   DeleteChat:
     `${defaultURL}/chat/conversations/delete`,
 
+  SuspensionStatus:
+    `${defaultURL}/chat/conversations/suspension`,
+
+  SuspendDirect:
+    `${defaultURL}/chat/conversations/suspend`,
+
+  UnsuspendDirect:
+    `${defaultURL}/chat/conversations/unsuspend`,
+
 
   MyGroups:
     `${defaultURL}/chat/groups/mine`,
@@ -779,6 +801,15 @@ const API_ENDPOINTS = {
 
   RemoveGroupMember:
     `${defaultURL}/chat/groups/removeMember`,
+
+  RemoveGroupMembers:
+    `${defaultURL}/chat/groups/removeMembers`,
+
+  SuspendGroupMembers:
+    `${defaultURL}/chat/groups/suspendMembers`,
+
+  UnsuspendGroupMembers:
+    `${defaultURL}/chat/groups/unsuspendMembers`,
 
   SetGroupRole:
     `${defaultURL}/chat/groups/setRole`,

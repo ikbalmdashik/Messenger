@@ -12,6 +12,11 @@ import { AuthService } from "@/auth/auth.service";
 import { AuthenticatedRequest } from "@/auth/interfaces/authenticated-request.interface";
 
 import { ChatGateway } from "./chat.getway";
+import { ChatService } from "./chat.service";
+import { describeDuration } from "./conversation/entities/conversation-participant.entity";
+import { UsersEntity } from "@/auth/entities/auth.entity";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
 import { ConversationService } from "./conversation/conversation.service";
 import { GroupService } from "./group/group.service";
 
@@ -46,6 +51,9 @@ export class ChatActionsController {
     private readonly conversationService: ConversationService,
     private readonly chatGateway: ChatGateway,
     private readonly groupService: GroupService,
+    private readonly chatService: ChatService,
+    @InjectRepository(UsersEntity)
+    private readonly userRepository: Repository<UsersEntity>,
   ) {}
 
   /* ==========================================================
@@ -116,6 +124,103 @@ export class ChatActionsController {
         userId: me,
         ...theirs,
       });
+    });
+  }
+
+  /* ==========================================================
+     DIRECT-CHAT SUSPENSION
+  ========================================================== */
+
+  @Post("conversations/suspension")
+  async suspensionStatus(
+    @Req() request: AuthenticatedRequest,
+    @Body("conversationId") conversationId: unknown,
+  ) {
+    return this.conversationService.getDirectSuspension(
+      requireId(conversationId, "conversationId"),
+      requireUserId(request),
+    );
+  }
+
+  @Post("conversations/suspend")
+  async suspendDirect(
+    @Req() request: AuthenticatedRequest,
+    @Body()
+    body: { conversationId?: unknown; durationMinutes?: unknown },
+  ) {
+    const me = requireUserId(request);
+
+    const status = await this.conversationService.suspendDirect(
+      requireId(body?.conversationId, "conversationId"),
+      me,
+      body?.durationMinutes ?? null,
+    );
+
+    await this.notifySuspension(
+      me,
+      status.otherUserId,
+      status.conversationId,
+      (actor, target) =>
+        `${actor} suspended ${target} from sending messages ${describeDuration(body?.durationMinutes)}`,
+    );
+
+    return status;
+  }
+
+  @Post("conversations/unsuspend")
+  async unsuspendDirect(
+    @Req() request: AuthenticatedRequest,
+    @Body("conversationId") conversationId: unknown,
+  ) {
+    const me = requireUserId(request);
+
+    const status = await this.conversationService.unsuspendDirect(
+      requireId(conversationId, "conversationId"),
+      me,
+    );
+
+    if (status.changed) {
+      await this.notifySuspension(
+        me,
+        status.otherUserId,
+        status.conversationId,
+        (actor, target) =>
+          `${actor} lifted the suspension of ${target}`,
+      );
+    }
+
+    return status;
+  }
+
+  private async notifySuspension(
+    me: number,
+    other: number,
+    conversationId: number,
+    text: (actor: string, target: string) => string,
+  ) {
+    const users = await this.userRepository.find({
+      where: [{ userId: me }, { userId: other }],
+      select: { userId: true, fullName: true },
+    });
+
+    const nameOf = (id: number) =>
+      users.find((user) => Number(user.userId) === id)?.fullName ??
+      "Someone";
+
+    try {
+      const message = await this.chatService.CreateSystemMessage(
+        conversationId,
+        me,
+        text(nameOf(me), nameOf(other)),
+      );
+
+      await this.chatGateway.broadcastNewMessage(message);
+    } catch (error) {
+      console.error("Suspension notice failed:", error);
+    }
+
+    this.chatGateway.emitToUsers([me, other], "suspension_updated", {
+      conversationId,
     });
   }
 

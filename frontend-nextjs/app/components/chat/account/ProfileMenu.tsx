@@ -32,8 +32,9 @@ import Routes from "@/app/routes/routes";
 import { getErrorMessage } from "@/app/lib/apiError";
 import { initialsOf } from "@/app/lib/profile";
 import { broadcastAuth, logoutAndRedirect } from "@/app/lib/session";
+import useConfirm from "@/app/components/shared/useConfirm";
+import useSessionEvents from "@/app/lib/useSessionEvents";
 
-const AUTH_CHANNEL = "auth_channel";
 const MAX_ACCOUNTS = 5;
 
 interface ProfileMenuProps {
@@ -48,6 +49,8 @@ interface ProfileMenuProps {
 const ProfileMenu: React.FC<ProfileMenuProps> = ({ onNewGroup }) => {
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
   const [busyUserId, setBusyUserId] = useState<number | null>(null);
+
+  const { confirm, confirmDialog } = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -68,34 +71,16 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({ onNewGroup }) => {
   }, [load]);
 
   /*
-   * Other tabs: account switched or logged out.
+   * Live: this account logged out in another tab or
+   * device -> reload, and the chat page shows
+   * "Authentication required"; a saved account
+   * logged out -> refresh the list.
    */
-  useEffect(() => {
-    let channel: BroadcastChannel | null = null;
+  useSessionEvents({
+    onSavedSessionRevoked: () => void load(),
+    onSessionsChanged: () => void load(),
+  });
 
-    try {
-      channel = new BroadcastChannel(AUTH_CHANNEL);
-    } catch {
-      return;
-    }
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === "ACCOUNT_SWITCHED") {
-        window.location.reload();
-      }
-
-      if (event.data?.type === "LOGOUT") {
-        window.location.assign(Routes.Login);
-      }
-    };
-
-    channel.addEventListener("message", handleMessage);
-
-    return () => {
-      channel?.removeEventListener("message", handleMessage);
-      channel?.close();
-    };
-  }, []);
 
   const active = accounts.find((account) => account.isActive) ?? null;
   const others = accounts.filter((account) => !account.isActive);
@@ -127,6 +112,17 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({ onNewGroup }) => {
   };
 
   const signOutOther = async (account: SavedAccount) => {
+    const ok = await confirm({
+      title: `Sign out ${account.fullName}?`,
+      description: `${account.email} will be signed out of this browser. You'll keep chatting as ${active?.fullName ?? "your current account"}.`,
+      confirmLabel: "Sign out",
+      danger: true,
+    });
+
+    if (!ok) {
+      return;
+    }
+
     try {
       setBusyUserId(account.userId);
 
@@ -145,8 +141,37 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({ onNewGroup }) => {
     }
   };
 
+  const logout = async () => {
+    const ok = await confirm({
+      title: "Log out?",
+      description: active
+        ? `You'll be logged out of ${active.fullName} (${active.email}).`
+        : "You'll be logged out of this account.",
+      consequences:
+        others.some((account) => account.isSignedIn)
+          ? ["Your other signed-in accounts stay signed in. Pick one on the sign-in page to continue."]
+          : undefined,
+      confirmLabel: "Log out",
+      danger: true,
+    });
+
+    if (!ok) {
+      return;
+    }
+
+    try {
+      await logoutAndRedirect();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Logout failed."));
+    }
+  };
+
   return (
+    <>
     <DropdownMenu.Root
+      // Non-modal, so the confirm dialog opened from
+      // a menu item doesn't fight the menu for focus.
+      modal={false}
       onOpenChange={(open) => {
         if (open) {
           void load();
@@ -255,7 +280,13 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({ onNewGroup }) => {
                       variant="ghost"
                       color="gray"
                       aria-label={`Sign out ${account.fullName}`}
+                      // The menu item clicks itself on pointer-up
+                      // when it missed the pointer-down, which
+                      // also switched to the account being
+                      // signed out. Stop both.
                       onPointerDown={(event) => event.stopPropagation()}
+                      onPointerUp={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -285,17 +316,16 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({ onNewGroup }) => {
 
         <DropdownMenu.Item
           color="red"
-          onSelect={() => {
-            logoutAndRedirect().catch((error) =>
-              toast.error(getErrorMessage(error, "Logout failed.")),
-            );
-          }}
+          onSelect={() => void logout()}
         >
           <LogOut size={15} />
           Log out
         </DropdownMenu.Item>
       </DropdownMenu.Content>
     </DropdownMenu.Root>
+
+    {confirmDialog}
+    </>
   );
 };
 

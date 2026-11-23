@@ -196,11 +196,13 @@ export class AuthController {
   }
 
   /**
-   * Log out the active account. If other saved
-   * accounts are still signed in, switch to the
-   * most recently added one.
+   * Log out the active account. Other saved accounts
+   * stay signed in, but none becomes active: the user
+   * picks one on the login page.
+   *
+   * Not guarded, so an already-expired session can
+   * still be cleared from the browser.
    */
-  @UseGuards(JwtAuthGuard)
   @Post('/logout')
   async logout(
     @Req() request: Request,
@@ -212,23 +214,11 @@ export class AuthController {
       await this.authService.logout(token);
     }
 
-    const { validTokens, accounts } =
-      await this.authService.ResolveSavedSessions(
-        readSavedTokens(request).filter((saved) => saved !== token),
-      );
+    const { validTokens } = await this.authService.ResolveSavedSessions(
+      readSavedTokens(request).filter((saved) => saved !== token),
+    );
 
     writeSavedTokens(response, validTokens);
-
-    if (validTokens.length > 0) {
-      setAccessToken(response, validTokens[0]);
-
-      return {
-        success: true,
-        message: 'Logged out. Switched to another saved account.',
-        switchedTo: accounts[0].userId,
-      };
-    }
-
     response.clearCookie('access_token', AUTH_COOKIE_OPTIONS);
 
     return {
@@ -266,9 +256,9 @@ export class AuthController {
 
     const signedInIds = new Set(accounts.map((account) => account.userId));
 
-    const remembered = await this.authService.ResolveRememberedAccounts(
-      this.readRemembered(request),
-    );
+    const remembered = await this.authService.ResolveRememberedAccounts([
+      ...new Set(this.readRemembered(request)),
+    ]);
 
     // Signed-in accounts first, then ones that need a password.
     const all = [

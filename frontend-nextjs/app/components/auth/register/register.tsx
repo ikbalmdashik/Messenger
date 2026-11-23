@@ -499,17 +499,26 @@ const MultiStepRegistration = () => {
               </AnimatePresence>
             </Box>
 
-            <Box px="3" pb="3" width="100%" mt="3">
+            <Box px="4" pb="3" width="100%" mt="3">
               {footerButtons}
 
               {step !== 4 && (
                 <Box mt="3">
+                  {/* Ghost buttons bleed past their box via
+                      negative margins; reset so this lines
+                      up with (and matches) Continue. */}
                   <Button
                     variant="ghost"
                     type="button"
+                    size="2"
                     onClick={goToLogin}
                     loading={loadingButton === "gotologin"}
-                    style={{ width: "100%" }}
+                    style={{
+                      width: "100%",
+                      margin: 0,
+                      boxSizing: "border-box",
+                      height: "var(--space-6)",
+                    }}
                   >
                     Already have an account? Log In
                   </Button>

@@ -9,6 +9,8 @@ import { ChatMessageEntity } from 'src/chat/entities/chat.entity';
 import { MailService } from 'src/mailer/mail.service';
 import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './jwt.strategy';
+import { SessionEventsService } from './session-events.service';
+import { SessionGateway } from './session.gateway';
 
 @Module({
   imports: [
@@ -31,7 +33,13 @@ import { JwtStrategy } from './jwt.strategy';
 
   ],
   controllers: [AuthController],
-  providers: [AuthService, MailService, JwtStrategy],
-  exports: [PassportModule, JwtModule, JwtStrategy, AuthService]
+  providers: [
+    AuthService,
+    MailService,
+    JwtStrategy,
+    SessionEventsService,
+    SessionGateway,
+  ],
+  exports: [PassportModule, JwtModule, JwtStrategy, AuthService, SessionEventsService]
 })
 export class AuthModule {}

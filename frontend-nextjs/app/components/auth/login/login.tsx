@@ -1,7 +1,12 @@
 "use client";
 
 import Routes from "@/app/routes/routes";
-import API_ENDPOINTS from "@/app/routes/api";
+import API_ENDPOINTS, {
+    GetUserByTokenResponse,
+    SavedAccount,
+} from "@/app/routes/api";
+import { broadcastAuth } from "@/app/lib/session";
+import { getErrorMessage } from "@/app/lib/apiError";
 
 import axios from "axios";
 import { useRouter } from "next/navigation";
@@ -30,6 +35,7 @@ import {
     Mail,
     AlertCircle,
     MessageCircle,
+    UserCheck,
 } from "lucide-react";
 
 import {
@@ -58,6 +64,19 @@ type FormData = {
 
     newPassword?: string;
     confirmPassword?: string;
+};
+
+
+/**
+ * An account that is already signed in on this
+ * browser: offered instead of logging in again.
+ */
+type AlreadySignedIn = {
+    userId: number;
+    fullName: string;
+    email: string;
+    /** It is the account currently open. */
+    isActive: boolean;
 };
 
 
@@ -126,6 +145,12 @@ const MultiStepLogin = () => {
 
     const [isPasswordAlertOpen, setIsPasswordAlertOpen] =
         useState(false);
+
+    const [alreadySignedIn, setAlreadySignedIn] =
+        useState<AlreadySignedIn | null>(null);
+
+    const [savedAccounts, setSavedAccounts] =
+        useState<SavedAccount[]>([]);
 
 
     /*
@@ -197,18 +222,22 @@ const MultiStepLogin = () => {
             }
 
             try {
-                const response = await axios.post(
-                    API_ENDPOINTS.GetUserByToken,
-                    {},
-                    {
-                        withCredentials: true,
-                    }
-                );
+                const response =
+                    await axios.post<GetUserByTokenResponse>(
+                        API_ENDPOINTS.GetUserByToken,
+                        {},
+                        {
+                            withCredentials: true,
+                        }
+                    );
 
                 if (!mounted) return;
 
                 /*
-                 * Valid authenticated session
+                 * Already logged in: continue with the
+                 * last used account. (Typing the email
+                 * of a signed-in account still prompts,
+                 * see handleEmailStep.)
                  *
                  * Email verification is intentionally
                  * NOT checked here.
@@ -268,6 +297,28 @@ const MultiStepLogin = () => {
 
         const inputEmail = getValues("email");
 
+        /*
+         * Already signed in on this browser: no
+         * need for a password, offer to open it.
+         */
+        const signedIn = savedAccounts.find(
+            (account) =>
+                account.isSignedIn &&
+                account.email.trim().toLowerCase() ===
+                    inputEmail.trim().toLowerCase()
+        );
+
+        if (signedIn) {
+            setNotification(null);
+            setAlreadySignedIn({
+                userId: signedIn.userId,
+                fullName: signedIn.fullName,
+                email: signedIn.email,
+                isActive: signedIn.isActive,
+            });
+            return;
+        }
+
         setLoadingButton("emailStep");
         setEmail(inputEmail);
         setNotification(null);
@@ -290,7 +341,7 @@ const MultiStepLogin = () => {
                 setIsNotFoundAlertOpen(true);
             }
         } catch (error) {
-            console.error(error);
+            console.log(error);
 
             setNotification({
                 type: "error",
@@ -304,7 +355,62 @@ const MultiStepLogin = () => {
         trigger,
         getValues,
         checkEmailExists,
+        savedAccounts,
     ]);
+
+
+    /*
+     * ================================
+     * ALREADY SIGNED IN: CONTINUE
+     * ================================
+     */
+
+    const continueWithSignedIn = useCallback(async () => {
+        if (!alreadySignedIn) return;
+
+        if (alreadySignedIn.isActive) {
+            router.replace(Routes.Chat);
+            return;
+        }
+
+        try {
+            setLoadingButton("continueSignedIn");
+
+            await axios.post(
+                API_ENDPOINTS.SwitchAccount,
+                { userId: alreadySignedIn.userId },
+                { withCredentials: true }
+            );
+
+            broadcastAuth("ACCOUNT_SWITCHED");
+            window.location.assign(Routes.Chat);
+        } catch (error) {
+            setAlreadySignedIn(null);
+            setLoadingButton(null);
+            setNotification({
+                type: "error",
+                message: getErrorMessage(
+                    error,
+                    "Couldn't open that account. Please log in again."
+                ),
+            });
+        }
+    }, [alreadySignedIn, router]);
+
+
+    const chooseAnotherAccount = useCallback(() => {
+        setAlreadySignedIn(null);
+        setValue("email", "");
+        setEmail("");
+
+        /*
+         * Stay here after a reload too, as with
+         * "Add another account".
+         */
+        const url = new URL(window.location.href);
+        url.searchParams.set("addAccount", "1");
+        window.history.replaceState(null, "", url.toString());
+    }, [setValue]);
 
 
     /*
@@ -339,6 +445,11 @@ const MultiStepLogin = () => {
                         withCredentials: true,
                     }
                 );
+
+                /*
+                 * Other tabs are now on this account.
+                 */
+                broadcastAuth("ACCOUNT_SWITCHED");
 
                 /*
                  * Authentication succeeded.
@@ -649,7 +760,9 @@ const MultiStepLogin = () => {
 
                     {/* SAVED ACCOUNTS */}
 
+                    <Box px="4">
                     <SavedAccounts
+                        onAccountsChange={setSavedAccounts}
                         onNeedsPassword={(savedEmail) => {
                             setValue("email", savedEmail);
                             setEmail(savedEmail);
@@ -663,6 +776,94 @@ const MultiStepLogin = () => {
                             })
                         }
                     />
+                    </Box>
+
+
+                    {/* ALREADY LOGGED IN ALERT */}
+
+                    <AlertDialog.Root
+                        open={alreadySignedIn !== null}
+                        onOpenChange={(open) => {
+                            if (!open) {
+                                chooseAnotherAccount();
+                            }
+                        }}
+                    >
+                        <AlertDialog.Content
+                            maxWidth="400px"
+                            className="p-6"
+                        >
+                            <Flex
+                                direction="column"
+                                align="center"
+                                className="text-center"
+                            >
+                                <AlertDialog.Title>
+                                    <Flex
+                                        align="center"
+                                        justify="center"
+                                        gap="2"
+                                    >
+                                        <UserCheck className="w-5 h-5 text-sky-500" />
+                                        Already logged in
+                                    </Flex>
+                                </AlertDialog.Title>
+
+                                <AlertDialog.Description
+                                    size="2"
+                                    my="3"
+                                    className="text-center"
+                                >
+                                    <strong>
+                                        {alreadySignedIn?.fullName}
+                                    </strong>
+                                    {alreadySignedIn?.email &&
+                                    alreadySignedIn.email !==
+                                        alreadySignedIn.fullName
+                                        ? ` (${alreadySignedIn.email})`
+                                        : ""}{" "}
+                                    is already logged in on this
+                                    browser. Continue with this
+                                    account, or log in with another
+                                    one.
+                                </AlertDialog.Description>
+                            </Flex>
+
+                            <Flex
+                                gap="3"
+                                width="100%"
+                                mt="2"
+                            >
+                                <Button
+                                    type="button"
+                                    variant="soft"
+                                    color="gray"
+                                    onClick={chooseAnotherAccount}
+                                    disabled={
+                                        loadingButton ===
+                                        "continueSignedIn"
+                                    }
+                                    style={{ flex: 1 }}
+                                >
+                                    Use another account
+                                </Button>
+
+                                <Button
+                                    type="button"
+                                    onClick={() =>
+                                        void continueWithSignedIn()
+                                    }
+                                    loading={
+                                        loadingButton ===
+                                        "continueSignedIn"
+                                    }
+                                    style={{ flex: 1 }}
+                                >
+                                    Continue
+                                </Button>
+                            </Flex>
+                        </AlertDialog.Content>
+                    </AlertDialog.Root>
 
 
                     {/* PASSWORD & OTP MODAL */}

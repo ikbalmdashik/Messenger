@@ -163,6 +163,56 @@ export class GroupController {
     );
   }
 
+  @Post("removeMembers")
+  async removeMembers(
+    @Req() request: AuthenticatedRequest,
+    @Body()
+    body: {
+      conversationId?: unknown;
+      userIds?: unknown;
+    },
+  ) {
+    return await this.groupService.removeMembers(
+      requireUserId(request),
+      requireId(body?.conversationId, "conversationId"),
+      body?.userIds,
+    );
+  }
+
+  @Post("suspendMembers")
+  async suspendMembers(
+    @Req() request: AuthenticatedRequest,
+    @Body()
+    body: {
+      conversationId?: unknown;
+      userIds?: unknown;
+      durationMinutes?: unknown;
+    },
+  ) {
+    return await this.groupService.suspendMembers(
+      requireUserId(request),
+      requireId(body?.conversationId, "conversationId"),
+      body?.userIds,
+      body?.durationMinutes ?? null,
+    );
+  }
+
+  @Post("unsuspendMembers")
+  async unsuspendMembers(
+    @Req() request: AuthenticatedRequest,
+    @Body()
+    body: {
+      conversationId?: unknown;
+      userIds?: unknown;
+    },
+  ) {
+    return await this.groupService.unsuspendMembers(
+      requireUserId(request),
+      requireId(body?.conversationId, "conversationId"),
+      body?.userIds,
+    );
+  }
+
   @Post("setRole")
   async setRole(
     @Req() request: AuthenticatedRequest,

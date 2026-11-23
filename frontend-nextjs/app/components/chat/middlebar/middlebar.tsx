@@ -28,13 +28,19 @@ import {
   Ban,
   Check,
   CheckCheck,
+  CheckCircle2,
+  Circle,
+  ListChecks,
   MessageSquare,
-  MoreVertical,
+  PanelRightClose,
+  PanelRightOpen,
   Pencil,
+  Plus,
   Reply,
   Send,
   ShieldBan,
-  SmilePlus,
+  TimerOff,
+  TimerReset,
   Trash2,
   Users,
   X,
@@ -50,15 +56,16 @@ import {
   Badge,
   Box,
   Button,
-  DropdownMenu,
   Flex,
   IconButton,
+  Popover,
   Text,
   Tooltip,
 } from "@radix-ui/themes";
 
 import API_ENDPOINTS, {
   BlockStatus,
+  DirectSuspensionStatus,
   GetConversationRequest,
   GetConversationResponse,
   GroupDetails,
@@ -70,6 +77,17 @@ import { toast } from "sonner";
 
 import { getErrorMessage } from "@/app/lib/apiError";
 import useConfirm from "../../shared/useConfirm";
+import EmojiPicker from "./EmojiPicker";
+import ProfileHoverCard from "../../shared/ProfileHoverCard";
+import {
+  BLOCK_UPDATED_EVENT,
+  SUSPENSION_UPDATED_EVENT,
+} from "@/app/lib/chatEvents";
+import {
+  activeUntil,
+  formatUntil,
+  nextExpiry,
+} from "@/app/lib/suspension";
 
 /* ============================================================
    TYPES
@@ -266,6 +284,11 @@ interface MiddlebarProps {
   onBack?: () => void;
 
   onOpenProfile?: () => void;
+
+  /** Desktop: details panel visibility + toggle. */
+  rightbarOpen?: boolean;
+
+  onToggleRightbar?: () => void;
 }
 
 /* ============================================================
@@ -476,38 +499,250 @@ const MessageActionButton = ({
   onClick: () => void;
   danger?: boolean;
   children: React.ReactNode;
-}) => (
-  <Tooltip content={label}>
-    <button
-      type="button"
-      aria-label={label}
-      onClick={(event) => {
-        event.stopPropagation();
+}) => {
+  /*
+   * Opens quickly and lingers a moment after the
+   * pointer leaves, so it doesn't flash away while
+   * moving between buttons.
+   */
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef<number | null>(null);
 
-        onClick();
-      }}
-      className={`
-        flex
-        h-6
-        w-6
-        cursor-pointer
-        items-center
-        justify-center
-        rounded-full
-        text-[var(--gray-a11)]
-        transition-colors
-        hover:bg-[var(--gray-a4)]
-        ${
-          danger
-            ? "hover:text-rose-500"
-            : "hover:text-[var(--gray-a12)]"
-        }
-      `}
+  const clearClose = () => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+
+  useEffect(() => clearClose, []);
+
+  const handleOpenChange = (next: boolean) => {
+    clearClose();
+
+    if (next) {
+      setOpen(true);
+      return;
+    }
+
+    closeTimer.current = window.setTimeout(() => {
+      setOpen(false);
+      closeTimer.current = null;
+    }, 350);
+  };
+
+  return (
+    <Tooltip
+      open={open}
+      onOpenChange={handleOpenChange}
+      delayDuration={250}
+      side="top"
+      sideOffset={6}
+      content={
+        <span className="flex items-center gap-1.5 px-0.5 py-0.5 text-[13px] font-medium">
+          <span className="flex h-3.5 w-3.5 items-center justify-center [&>svg]:h-3.5 [&>svg]:w-3.5">
+            {children}
+          </span>
+          {label}
+        </span>
+      }
     >
-      {children}
-    </button>
-  </Tooltip>
-);
+      <button
+        type="button"
+        aria-label={label}
+        onClick={(event) => {
+          event.stopPropagation();
+          clearClose();
+          setOpen(false);
+
+          onClick();
+        }}
+        className={`
+          flex
+          h-8
+          w-8
+          cursor-pointer
+          items-center
+          justify-center
+          rounded-full
+          text-[var(--gray-a11)]
+          transition-colors
+          hover:bg-[var(--gray-a4)]
+          [&>svg]:h-4
+          [&>svg]:w-4
+          ${
+            danger
+              ? "hover:text-rose-500"
+              : "hover:text-[var(--gray-a12)]"
+          }
+        `}
+      >
+        {children}
+      </button>
+    </Tooltip>
+  );
+};
+
+/* ============================================================
+   WHO REACTED
+============================================================ */
+
+/**
+ * Popover body listing who reacted, filterable
+ * by emoji. Tapping your own row removes it.
+ */
+const ReactionDetails = ({
+  reactions,
+  initialEmoji,
+  myId,
+  getName,
+  getAvatar,
+  onRemoveMine,
+}: {
+  reactions: MessageReaction[];
+  initialEmoji: string | null;
+  myId: number;
+  getName: (userId: number) => string;
+  getAvatar: (userId: number) => string | null;
+  onRemoveMine: (emoji: string) => void;
+}) => {
+  const [filter, setFilter] = useState<
+    string | null
+  >(initialEmoji);
+
+  const emojiCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const reaction of reactions) {
+      counts.set(
+        reaction.emoji,
+        (counts.get(reaction.emoji) ?? 0) + 1,
+      );
+    }
+
+    return [...counts.entries()];
+  }, [reactions]);
+
+  // Me first, then in reaction order.
+  const rows = reactions
+    .filter(
+      (reaction) =>
+        filter === null ||
+        reaction.emoji === filter,
+    )
+    .sort(
+      (a, b) =>
+        Number(Number(b.userId) === myId) -
+        Number(Number(a.userId) === myId),
+    );
+
+  const chipClass = (active: boolean) => `
+    flex
+    shrink-0
+    cursor-pointer
+    items-center
+    gap-1
+    rounded-full
+    px-2.5
+    py-1
+    text-xs
+    font-medium
+    transition-colors
+    ${
+      active
+        ? "bg-[var(--accent-a4)] text-[var(--accent-11)]"
+        : "text-[var(--gray-a11)] hover:bg-[var(--gray-a3)]"
+    }
+  `;
+
+  return (
+    <div className="flex w-64 max-w-[80vw] flex-col">
+      <div className="flex gap-1 overflow-x-auto border-b border-[var(--gray-a4)] pb-2">
+        <button
+          type="button"
+          onClick={() => setFilter(null)}
+          className={chipClass(filter === null)}
+        >
+          All {reactions.length}
+        </button>
+
+        {emojiCounts.map(([emoji, count]) => (
+          <button
+            key={emoji}
+            type="button"
+            onClick={() => setFilter(emoji)}
+            className={chipClass(filter === emoji)}
+          >
+            <span className="text-sm leading-none">
+              {emoji}
+            </span>
+            {count}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-1 flex max-h-64 flex-col overflow-y-auto">
+        {rows.map((reaction) => {
+          const userId = Number(reaction.userId);
+          const isMe = userId === myId;
+          const name = getName(userId);
+
+          const content = (
+            <>
+              <Avatar
+                size="1"
+                radius="full"
+                src={getAvatar(userId) ?? undefined}
+                fallback={
+                  name.charAt(0).toUpperCase() || "U"
+                }
+              />
+
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-sm text-[var(--gray-12)]">
+                  {name}
+                </span>
+
+                {isMe && (
+                  <span className="block text-[11px] text-[var(--gray-a10)]">
+                    Click to remove
+                  </span>
+                )}
+              </span>
+
+              <span className="text-lg leading-none">
+                {reaction.emoji}
+              </span>
+            </>
+          );
+
+          return isMe ? (
+            <Popover.Close
+              key={`${userId}-${reaction.emoji}`}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  onRemoveMine(reaction.emoji)
+                }
+                className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-[var(--gray-a3)]"
+              >
+                {content}
+              </button>
+            </Popover.Close>
+          ) : (
+            <div
+              key={`${userId}-${reaction.emoji}`}
+              className="flex items-center gap-2.5 rounded-md px-2 py-1.5"
+            >
+              {content}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 /* ============================================================
    MIDDLEBAR
@@ -526,6 +761,8 @@ const Middlebar: React.FC<
   selfDeactivated = false,
   onBack,
   onOpenProfile,
+  rightbarOpen = true,
+  onToggleRightbar,
 }) => {
   const isGroup =
     conversationType === "GROUP";
@@ -579,10 +816,28 @@ const Middlebar: React.FC<
     setEditingMessage,
   ] = useState<ChatMessage | null>(null);
 
+  /**
+   * Messages waiting for the "delete for me /
+   * for everyone" confirmation.
+   */
   const [
     pendingDelete,
     setPendingDelete,
-  ] = useState<ChatMessage | null>(null);
+  ] = useState<ChatMessage[] | null>(null);
+
+  /**
+   * Multi-select mode for deleting several
+   * messages at once.
+   */
+  const [
+    selectingMessages,
+    setSelectingMessages,
+  ] = useState(false);
+
+  const [
+    selectedMessageIds,
+    setSelectedMessageIds,
+  ] = useState<Set<number>>(() => new Set());
 
   /**
    * Users currently typing here (one for a
@@ -636,10 +891,6 @@ const Middlebar: React.FC<
     blockedMe: false,
   });
 
-  const [
-    confirmDeleteChat,
-    setConfirmDeleteChat,
-  ] = useState(false);
 
   const [
     chatActionBusy,
@@ -1251,6 +1502,13 @@ const Middlebar: React.FC<
         );
       };
 
+    setShowScrollDown(
+      container.scrollHeight -
+        container.scrollTop -
+        container.clientHeight >
+        400,
+    );
+
     container.addEventListener(
       "scroll",
       handleScroll,
@@ -1587,6 +1845,60 @@ const Middlebar: React.FC<
       };
 
     /* ========================================================
+       MESSAGES HIDDEN ("delete for me", any of my tabs)
+    ======================================================== */
+
+    const handleMessagesHidden = (data: {
+      conversationId: number;
+      messageIds: number[];
+    }) => {
+      if (
+        Number(data?.conversationId) !==
+          numericConversationId ||
+        !Array.isArray(data.messageIds)
+      ) {
+        return;
+      }
+
+      const hiddenIds = new Set(
+        data.messageIds.map(Number),
+      );
+
+      setChats((previous) => {
+        const next = previous.filter(
+          (chat) =>
+            !hiddenIds.has(
+              Number(chat.messageId),
+            ),
+        );
+
+        // The server skips hidden rows when
+        // paging, so keep the offset in step.
+        offsetRef.current = Math.max(
+          0,
+          offsetRef.current -
+            (previous.length - next.length),
+        );
+
+        return next;
+      });
+
+      setSelectedMessageIds((current) => {
+        if (current.size === 0) {
+          return current;
+        }
+
+        const next = new Set(current);
+
+        hiddenIds.forEach((id) =>
+          next.delete(id),
+        );
+
+        return next;
+      });
+    };
+
+    /* ========================================================
        MESSAGE UPDATED (edit / delete / reactions)
     ======================================================== */
 
@@ -1910,6 +2222,11 @@ const Middlebar: React.FC<
     );
 
     socket.on(
+      "messages_hidden",
+      handleMessagesHidden,
+    );
+
+    socket.on(
       "messages_seen",
       handleMessagesSeen,
     );
@@ -1939,6 +2256,13 @@ const Middlebar: React.FC<
       blockedByMe: boolean;
       blockedMe: boolean;
     }) => {
+      // Keep the rightbar (profile panel) in sync.
+      window.dispatchEvent(
+        new CustomEvent(BLOCK_UPDATED_EVENT, {
+          detail: { userId: Number(data?.userId) },
+        }),
+      );
+
       if (
         Number(data?.userId) ===
         partnerIdRef.current
@@ -1953,6 +2277,23 @@ const Middlebar: React.FC<
     socket.on(
       "block_updated",
       handleBlockUpdated,
+    );
+
+    const handleSuspensionUpdated = (data: {
+      conversationId: number;
+    }) => {
+      window.dispatchEvent(
+        new CustomEvent(SUSPENSION_UPDATED_EVENT, {
+          detail: {
+            conversationId: Number(data?.conversationId),
+          },
+        }),
+      );
+    };
+
+    socket.on(
+      "suspension_updated",
+      handleSuspensionUpdated,
     );
 
     /* ========================================================
@@ -2015,6 +2356,11 @@ const Middlebar: React.FC<
       );
 
       socket.off(
+        "messages_hidden",
+        handleMessagesHidden,
+      );
+
+      socket.off(
         "messages_seen",
         handleMessagesSeen,
       );
@@ -2042,6 +2388,11 @@ const Middlebar: React.FC<
       socket.off(
         "block_updated",
         handleBlockUpdated,
+      );
+
+      socket.off(
+        "suspension_updated",
+        handleSuspensionUpdated,
       );
 
       document.removeEventListener(
@@ -2224,6 +2575,10 @@ const Middlebar: React.FC<
     setEditingMessage(null);
 
     setPendingDelete(null);
+
+    setSelectingMessages(false);
+
+    setSelectedMessageIds(new Set());
 
     setActiveMessageId(null);
 
@@ -2433,57 +2788,136 @@ const Middlebar: React.FC<
     [],
   );
 
-  const confirmDelete =
+  const stopSelectingMessages =
     useCallback(() => {
-      const target = pendingDelete;
+      setSelectingMessages(false);
 
-      setPendingDelete(null);
+      setSelectedMessageIds(new Set());
+    }, []);
 
-      if (!target) {
-        return;
-      }
+  const startSelectingMessages =
+    useCallback(
+      (chat?: ChatMessage) => {
+        setActiveMessageId(null);
 
-      socketRef.current?.emit(
-        "delete_message",
-        {
-          messageId: target.messageId,
-        },
-        (response?: {
-          success?: boolean;
-          message?: unknown;
-        }) => {
-          if (
-            response?.success === false
-          ) {
-            toast.error(
-              typeof response.message === "string"
-                ? response.message
-                : "Couldn't unsend that message.",
-            );
-          }
-        },
-      );
+        setReactionPickerFor(null);
 
-      if (
-        editingMessage?.messageId ===
-        target.messageId
-      ) {
-        setEditingMessage(null);
+        setSelectingMessages(true);
 
-        setMessage("");
-      }
+        setSelectedMessageIds(
+          new Set(
+            chat ? [chat.messageId] : [],
+          ),
+        );
+      },
+      [],
+    );
 
-      if (
-        replyingTo?.messageId ===
-        target.messageId
-      ) {
-        setReplyingTo(null);
-      }
-    }, [
-      pendingDelete,
-      editingMessage,
-      replyingTo,
-    ]);
+  const toggleMessageSelected =
+    useCallback((messageId: number) => {
+      setSelectedMessageIds((current) => {
+        const next = new Set(current);
+
+        if (next.has(messageId)) {
+          next.delete(messageId);
+        } else {
+          next.add(messageId);
+        }
+
+        return next;
+      });
+    }, []);
+
+  /**
+   * Delete the pending messages, either just for
+   * me (hidden from my view) or for everyone
+   * (unsend; only my own messages).
+   */
+  const deleteMessages =
+    useCallback(
+      (scope: "me" | "everyone") => {
+        const targets = pendingDelete;
+
+        setPendingDelete(null);
+
+        if (!targets || targets.length === 0) {
+          return;
+        }
+
+        const ids = targets.map(
+          (target) => target.messageId,
+        );
+
+        socketRef.current?.emit(
+          "delete_messages",
+          {
+            messageIds: ids,
+            scope,
+          },
+          (response?: {
+            success?: boolean;
+            message?: unknown;
+          }) => {
+            if (
+              response?.success === false
+            ) {
+              toast.error(
+                typeof response.message === "string"
+                  ? response.message
+                  : "Couldn't delete those messages.",
+              );
+
+              return;
+            }
+
+            stopSelectingMessages();
+          },
+        );
+
+        if (
+          editingMessage &&
+          ids.includes(
+            editingMessage.messageId,
+          )
+        ) {
+          setEditingMessage(null);
+
+          setMessage("");
+        }
+
+        if (
+          replyingTo &&
+          ids.includes(replyingTo.messageId)
+        ) {
+          setReplyingTo(null);
+        }
+      },
+      [
+        pendingDelete,
+        editingMessage,
+        replyingTo,
+        stopSelectingMessages,
+      ],
+    );
+
+  /**
+   * "Delete for everyone" is only offered when
+   * every pending message is my own, live text.
+   */
+  const canDeleteForEveryone = Boolean(
+    pendingDelete &&
+      pendingDelete.length > 0 &&
+      pendingDelete.some(
+        (chat) => !chat.isDeleted,
+      ) &&
+      pendingDelete.every(
+        (chat) =>
+          chat.isDeleted ||
+          (Number(chat.senderId) ===
+            Number(senderId) &&
+            chat.type !== "SYSTEM"),
+      ),
+  );
 
   /**
    * Scroll to the original message
@@ -2519,9 +2953,26 @@ const Middlebar: React.FC<
     [],
   );
 
+  /**
+   * Scroll the feed itself (not the page) to the
+   * newest message. scrollIntoView on the sentinel
+   * could scroll the wrong ancestor or get
+   * cancelled mid-animation, so drive the
+   * container directly.
+   */
   const scrollToBottom =
     useCallback(() => {
-      bottomRef.current?.scrollIntoView({
+      const container =
+        messagesContainerRef.current;
+
+      if (!container) {
+        return;
+      }
+
+      setShowScrollDown(false);
+
+      container.scrollTo({
+        top: container.scrollHeight,
         behavior: "smooth",
       });
     }, []);
@@ -2558,6 +3009,20 @@ const Middlebar: React.FC<
       isGroup,
       membersById,
       conversationUser?.fullName,
+    ],
+  );
+
+  const getReactorAvatar = useCallback(
+    (id: number) =>
+      !isGroup &&
+      id !== Number(senderId)
+        ? conversationUser?.profilePicture ??
+          null
+        : null,
+    [
+      isGroup,
+      senderId,
+      conversationUser?.profilePicture,
     ],
   );
 
@@ -2711,43 +3176,137 @@ const Middlebar: React.FC<
     confirm,
   ]);
 
-  /**
-   * Delete for me: the sidebar's
-   * "conversation_deleted" event closes this view.
-   */
-  const deleteChat = useCallback(async () => {
-    const numericConversationId =
-      Number(conversationId);
+  const isBlocked =
+    !isGroup &&
+    (blockStatus.blockedByMe ||
+      blockStatus.blockedMe);
 
-    if (!Number.isFinite(numericConversationId)) {
+  /* ==========================================================
+     SUSPENSION
+  ========================================================== */
+
+  const [
+    directSuspension,
+    setDirectSuspension,
+  ] = useState<DirectSuspensionStatus | null>(null);
+
+  /** Re-render when a suspension runs out. */
+  const [, setSuspensionTick] = useState(0);
+
+  useEffect(() => {
+    setDirectSuspension(null);
+
+    const numericConversationId = Number(conversationId);
+
+    if (
+      isGroup ||
+      !Number.isFinite(numericConversationId) ||
+      numericConversationId <= 0
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const load = () => {
+      axios
+        .post<DirectSuspensionStatus>(
+          API_ENDPOINTS.SuspensionStatus,
+          { conversationId: numericConversationId },
+          { withCredentials: true },
+        )
+        .then((response) => {
+          if (!cancelled && response.data) {
+            setDirectSuspension(response.data);
+          }
+        })
+        .catch(() => undefined);
+    };
+
+    load();
+
+    const handleUpdated = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ conversationId: number }>
+      ).detail;
+
+      if (Number(detail?.conversationId) === numericConversationId) {
+        load();
+      }
+    };
+
+    window.addEventListener(SUSPENSION_UPDATED_EVENT, handleUpdated);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SUSPENSION_UPDATED_EVENT, handleUpdated);
+    };
+  }, [conversationId, isGroup]);
+
+  const mySuspendedUntil = activeUntil(
+    isGroup
+      ? myMember?.suspendedUntil
+      : directSuspension?.mySuspendedUntil,
+  );
+
+  const theirSuspendedUntil = isGroup
+    ? null
+    : activeUntil(directSuspension?.theirSuspendedUntil);
+
+  const suspensionExpiry = nextExpiry([
+    mySuspendedUntil,
+    theirSuspendedUntil,
+  ]);
+
+  useEffect(() => {
+    if (!suspensionExpiry) {
+      return;
+    }
+
+    const timer = window.setTimeout(
+      () => setSuspensionTick((value) => value + 1),
+      Math.min(
+        Math.max(suspensionExpiry - Date.now() + 500, 500),
+        2 ** 31 - 1,
+      ),
+    );
+
+    return () => window.clearTimeout(timer);
+  }, [suspensionExpiry]);
+
+  const liftDirectSuspension = useCallback(async () => {
+    const numericConversationId = Number(conversationId);
+
+    if (!numericConversationId) {
       return;
     }
 
     try {
       setChatActionBusy(true);
 
-      await axios.post(
-        API_ENDPOINTS.DeleteChat,
+      const response = await axios.post<DirectSuspensionStatus>(
+        API_ENDPOINTS.UnsuspendDirect,
         { conversationId: numericConversationId },
         { withCredentials: true },
       );
 
-      setConfirmDeleteChat(false);
+      setDirectSuspension(response.data);
 
-      toast.success("Chat deleted.");
-    } catch (error) {
-      toast.error(
-        getErrorMessage(error, "Couldn't delete the chat."),
+      window.dispatchEvent(
+        new CustomEvent(SUSPENSION_UPDATED_EVENT, {
+          detail: { conversationId: numericConversationId },
+        }),
       );
+
+      toast.success(
+        `${conversationUser?.fullName ?? "They"} can send messages again.`,
+      );
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Couldn't lift the suspension."));
     } finally {
       setChatActionBusy(false);
     }
-  }, [conversationId]);
-
-  const isBlocked =
-    !isGroup &&
-    (blockStatus.blockedByMe ||
-      blockStatus.blockedMe);
+  }, [conversationId, conversationUser?.fullName]);
 
   /* ==========================================================
      LOAD GROUP DETAILS
@@ -3270,7 +3829,7 @@ const Middlebar: React.FC<
                 gap="1.5"
               >
                 {selectedUser?.publicId ? (
-                  <Tooltip content="View profile">
+                  <ProfileHoverCard publicId={selectedUser.publicId}>
                     <Link
                       href={`/${encodeURIComponent(
                         selectedUser.publicId,
@@ -3290,7 +3849,7 @@ const Middlebar: React.FC<
                       {selectedUser.fullName ||
                         "Conversation"}
                     </Link>
-                  </Tooltip>
+                  </ProfileHoverCard>
                 ) : (
                   <Text
                     size="3"
@@ -3416,71 +3975,41 @@ const Middlebar: React.FC<
               </IconButton>
             )}
 
-            {/* Chat actions */}
+            {/* Desktop: show / hide the details panel */}
 
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger>
+            {onToggleRightbar && conversationId && (
+              <Tooltip
+                content={
+                  rightbarOpen
+                    ? "Hide details"
+                    : isGroup
+                      ? "Show group info"
+                      : "Show profile & options"
+                }
+              >
                 <IconButton
-                  variant="ghost"
+                  variant={rightbarOpen ? "soft" : "ghost"}
                   color="gray"
-                  aria-label="Chat options"
-                  className="shrink-0 cursor-pointer"
-                  disabled={chatActionBusy}
-                >
-                  <MoreVertical className="h-5 w-5" />
-                </IconButton>
-              </DropdownMenu.Trigger>
-
-              <DropdownMenu.Content align="end">
-                {!isGroup && selectedUser?.publicId && (
-                  <DropdownMenu.Item asChild>
-                    <Link
-                      href={`/${encodeURIComponent(
-                        selectedUser.publicId,
-                      )}`}
-                    >
-                      View profile
-                    </Link>
-                  </DropdownMenu.Item>
-                )}
-
-                {isGroup && onOpenProfile && (
-                  <DropdownMenu.Item
-                    onSelect={() => onOpenProfile()}
-                  >
-                    Group info
-                  </DropdownMenu.Item>
-                )}
-
-                {!isGroup && partnerUserId && (
-                  <DropdownMenu.Item
-                    color={
-                      blockStatus.blockedByMe
-                        ? undefined
-                        : "red"
-                    }
-                    onSelect={() => {
-                      void toggleBlock();
-                    }}
-                  >
-                    {blockStatus.blockedByMe
-                      ? "Unblock"
-                      : "Block"}
-                  </DropdownMenu.Item>
-                )}
-
-                <DropdownMenu.Separator />
-
-                <DropdownMenu.Item
-                  color="red"
-                  onSelect={() =>
-                    setConfirmDeleteChat(true)
+                  aria-label={
+                    rightbarOpen
+                      ? "Hide details panel"
+                      : "Show details panel"
                   }
+                  aria-pressed={rightbarOpen}
+                  onClick={onToggleRightbar}
+                  className="hidden shrink-0 cursor-pointer md:inline-flex"
                 >
-                  Delete chat
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Root>
+                  {rightbarOpen ? (
+                    <PanelRightClose className="h-5 w-5" />
+                  ) : (
+                    <PanelRightOpen className="h-5 w-5" />
+                  )}
+                </IconButton>
+              </Tooltip>
+            )}
+
+            {/* Chat actions (profile, block, add people,
+                leave, delete chat) live in the rightbar. */}
           </Flex>
         </Flex>
       </Box>
@@ -3510,7 +4039,7 @@ const Middlebar: React.FC<
           flex-1
           overflow-y-auto
           p-4
-          pt-6
+          pt-12
         "
       >
         {/* Loading older messages */}
@@ -3723,11 +4252,20 @@ const Middlebar: React.FC<
                     Number(senderId),
                   );
 
-                const actionsOpen =
-                  activeMessageId ===
-                    chat.messageId ||
+                const pickerExpanded =
                   reactionPickerFor ===
-                    chat.messageId;
+                  chat.messageId;
+
+                const actionsOpen =
+                  !selectingMessages &&
+                  (activeMessageId ===
+                    chat.messageId ||
+                    pickerExpanded);
+
+                const isSelected =
+                  selectedMessageIds.has(
+                    chat.messageId,
+                  );
 
                 const isHighlighted =
                   highlightedMessageId ===
@@ -3787,8 +4325,41 @@ const Middlebar: React.FC<
                             ? "end"
                             : "start"
                         }
-                        className="w-full"
+                        align="center"
+                        gap="3"
+                        onClick={
+                          selectingMessages
+                            ? () =>
+                                toggleMessageSelected(
+                                  chat.messageId,
+                                )
+                            : undefined
+                        }
+                        className={`w-full ${
+                          selectingMessages
+                            ? `cursor-pointer select-none rounded-xl py-1 pl-1 transition-colors ${
+                                isSelected
+                                  ? "bg-[var(--accent-a3)]"
+                                  : "hover:bg-[var(--gray-a2)]"
+                              }`
+                            : ""
+                        }`}
                       >
+                        {selectingMessages && (
+                          <span
+                            role="checkbox"
+                            aria-checked={isSelected}
+                            aria-label="Select message"
+                            className={`shrink-0 ${isMine ? "mr-auto" : ""}`}
+                          >
+                            {isSelected ? (
+                              <CheckCircle2 className="h-5 w-5 text-sky-500" />
+                            ) : (
+                              <Circle className="h-5 w-5 text-[var(--gray-a8)]" />
+                            )}
+                          </span>
+                        )}
+
                         <div
                           className={`
                             group
@@ -3806,17 +4377,22 @@ const Middlebar: React.FC<
                         >
                           {/* ACTION BAR */}
 
-                          {!isDeleted && (
+                          {!selectingMessages && (
                             <div
                               id={`message-actions-${chat.messageId}`}
                               className={`
                                 absolute
                                 top-full
-                                mt-0.5
+                                mt-1
                                 z-20
                                 flex
                                 items-center
                                 gap-0.5
+                                before:absolute
+                                before:inset-x-0
+                                before:-top-1.5
+                                before:h-1.5
+                                before:content-['']
                                 rounded-full
                                 border
                                 border-[var(--gray-a4)]
@@ -3838,154 +4414,226 @@ const Middlebar: React.FC<
                                 }
                               `}
                             >
-                              <MessageActionButton
-                                label="React"
-                                onClick={() =>
-                                  setReactionPickerFor(
-                                    (current) =>
-                                      current ===
-                                      chat.messageId
-                                        ? null
-                                        : chat.messageId,
-                                  )
-                                }
-                              >
-                                <SmilePlus className="h-3.5 w-3.5" />
-                              </MessageActionButton>
+                              {!isDeleted && (
+                                <MessageActionButton
+                                  label="Reply"
+                                  onClick={() =>
+                                    startReply(
+                                      chat,
+                                    )
+                                  }
+                                >
+                                  <Reply className="h-3.5 w-3.5" />
+                                </MessageActionButton>
+                              )}
+
+                              {isMine && !isDeleted && (
+                                <MessageActionButton
+                                  label="Edit"
+                                  onClick={() =>
+                                    startEdit(
+                                      chat,
+                                    )
+                                  }
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </MessageActionButton>
+                              )}
 
                               <MessageActionButton
-                                label="Reply"
+                                label="Select"
                                 onClick={() =>
-                                  startReply(
+                                  startSelectingMessages(
                                     chat,
                                   )
                                 }
                               >
-                                <Reply className="h-3.5 w-3.5" />
+                                <ListChecks className="h-3.5 w-3.5" />
                               </MessageActionButton>
 
-                              {isMine && (
-                                <>
-                                  <MessageActionButton
-                                    label="Edit"
-                                    onClick={() =>
-                                      startEdit(
-                                        chat,
-                                      )
-                                    }
-                                  >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </MessageActionButton>
+                              <MessageActionButton
+                                label="Delete"
+                                danger
+                                onClick={() => {
+                                  setActiveMessageId(
+                                    null,
+                                  );
 
-                                  <MessageActionButton
-                                    label="Unsend"
-                                    danger
-                                    onClick={() => {
-                                      setActiveMessageId(
-                                        null,
-                                      );
-
-                                      setPendingDelete(
-                                        chat,
-                                      );
-                                    }}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </MessageActionButton>
-                                </>
-                              )}
+                                  setPendingDelete([
+                                    chat,
+                                  ]);
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </MessageActionButton>
                             </div>
                           )}
 
-                          {/* QUICK REACTION PICKER */}
+                          {/* REACTION BAR (shown on hover, like
+                              the action bar) */}
 
-                          <AnimatePresence>
-                            {reactionPickerFor ===
-                              chat.messageId && (
-                              <motion.div
-                                id={`reaction-picker-${chat.messageId}`}
-                                initial={{
-                                  opacity: 0,
-                                  y: -6,
-                                  scale: 0.9,
-                                }}
-                                animate={{
-                                  opacity: 1,
-                                  y: 0,
-                                  scale: 1,
-                                }}
-                                exit={{
-                                  opacity: 0,
-                                  scale: 0.9,
-                                }}
-                                transition={{
-                                  duration: 0.12,
-                                }}
-                                className={`
-                                  absolute
-                                  top-full
-                                  mt-8
-                                  z-30
-                                  flex
-                                  gap-1
-                                  rounded-full
-                                  border
-                                  border-[var(--gray-a4)]
-                                  bg-[var(--color-panel-solid)]
-                                  px-2
-                                  py-1
-                                  shadow-lg
-                                  ${
-                                    isMine
-                                      ? "right-0"
-                                      : "left-0"
+                          {!isDeleted &&
+                            !selectingMessages && (
+                            <div
+                              id={`reaction-picker-${chat.messageId}`}
+                              className={`
+                                absolute
+                                bottom-full
+                                mb-1
+                                z-30
+                                flex
+                                flex-col
+                                after:absolute
+                                after:inset-x-0
+                                after:-bottom-1.5
+                                after:h-1.5
+                                after:content-['']
+                                border
+                                border-[var(--gray-a4)]
+                                bg-[var(--color-panel-solid)]
+                                px-1.5
+                                py-1
+                                shadow-lg
+                                transition-opacity
+                                duration-150
+                                ${
+                                  pickerExpanded
+                                    ? "rounded-2xl pb-1.5"
+                                    : "rounded-full"
+                                }
+                                ${
+                                  isMine
+                                    ? "right-0"
+                                    : "left-0"
+                                }
+                                ${
+                                  actionsOpen
+                                    ? "opacity-100"
+                                    : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
+                                }
+                              `}
+                            >
+                              {pickerExpanded && (
+                                <EmojiPicker
+                                  onPick={(emoji) =>
+                                    toggleReaction(
+                                      chat.messageId,
+                                      emoji,
+                                    )
                                   }
-                                `}
-                              >
-                                {QUICK_REACTIONS.map(
-                                  (emoji) => (
-                                    <button
-                                      key={emoji}
-                                      type="button"
-                                      aria-label={`React ${emoji}`}
-                                      onClick={(
-                                        event,
-                                      ) => {
-                                        event.stopPropagation();
+                                />
+                              )}
 
-                                        toggleReaction(
-                                          chat.messageId,
-                                          emoji,
-                                        );
-                                      }}
-                                      className="
-                                        cursor-pointer
-                                        text-lg
-                                        leading-none
-                                        transition-transform
-                                        hover:scale-125
-                                      "
-                                    >
-                                      {emoji}
-                                    </button>
-                                  ),
+                              <div className={`flex items-center gap-0.5 ${pickerExpanded ? "mt-2 justify-center border-t border-[var(--gray-a4)] pt-1" : ""}`}>
+                                {QUICK_REACTIONS.map(
+                                  (emoji) => {
+                                    const mine =
+                                      chat.reactions?.some(
+                                        (reaction) =>
+                                          Number(reaction.userId) ===
+                                            Number(senderId) &&
+                                          reaction.emoji === emoji,
+                                      );
+
+                                    return (
+                                      <button
+                                        key={emoji}
+                                        type="button"
+                                        aria-label={`React ${emoji}`}
+                                        aria-pressed={mine}
+                                        onClick={(
+                                          event,
+                                        ) => {
+                                          event.stopPropagation();
+
+                                          toggleReaction(
+                                            chat.messageId,
+                                            emoji,
+                                          );
+                                        }}
+                                        className={`
+                                          flex
+                                          h-9
+                                          w-9
+                                          cursor-pointer
+                                          items-center
+                                          justify-center
+                                          rounded-full
+                                          text-[22px]
+                                          leading-none
+                                          transition-transform
+                                          hover:scale-125
+                                          ${mine ? "bg-[var(--accent-a4)]" : ""}
+                                        `}
+                                      >
+                                        {emoji}
+                                      </button>
+                                    );
+                                  },
                                 )}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
+
+                                <button
+                                  type="button"
+                                  aria-label={
+                                    pickerExpanded
+                                      ? "Fewer emojis"
+                                      : "More emojis"
+                                  }
+                                  title={
+                                    pickerExpanded
+                                      ? "Fewer emojis"
+                                      : "Pick any emoji"
+                                  }
+                                  aria-expanded={pickerExpanded}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+
+                                    setReactionPickerFor(
+                                      (current) =>
+                                        current ===
+                                        chat.messageId
+                                          ? null
+                                          : chat.messageId,
+                                    );
+                                  }}
+                                  className={`
+                                    ml-0.5
+                                    flex
+                                    h-9
+                                    w-9
+                                    cursor-pointer
+                                    items-center
+                                    justify-center
+                                    rounded-full
+                                    text-[var(--gray-11)]
+                                    transition-all
+                                    hover:bg-[var(--gray-a4)]
+                                    ${pickerExpanded ? "rotate-45 bg-[var(--gray-a4)]" : ""}
+                                  `}
+                                >
+                                  <Plus className="h-5 w-5" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
                           {/* SENDER NAME (groups) */}
 
                           {showSenderName && (
                             senderMember ? (
-                              <Link
-                                href={`/${encodeURIComponent(
-                                  senderMember.publicId,
-                                )}`}
-                                className="mb-0.5 px-1 text-xs font-semibold text-sky-600 hover:underline dark:text-sky-400"
+                              <ProfileHoverCard
+                                publicId={senderMember.publicId}
+                                side="top"
                               >
-                                {senderMember.fullName}
-                              </Link>
+                                <Link
+                                  href={`/${encodeURIComponent(
+                                    senderMember.publicId,
+                                  )}`}
+                                  className="mb-0.5 px-1 text-xs font-semibold text-sky-600 hover:underline dark:text-sky-400"
+                                >
+                                  {senderMember.fullName}
+                                </Link>
+                              </ProfileHoverCard>
                             ) : (
                               <Text
                                 size="1"
@@ -4000,17 +4648,24 @@ const Middlebar: React.FC<
                           {/* MESSAGE */}
 
                           <div
-                            onClick={() =>
+                            onClick={() => {
+                              if (selectingMessages) {
+                                return;
+                              }
+
                               setActiveMessageId(
                                 (current) =>
                                   current ===
                                   chat.messageId
                                     ? null
                                     : chat.messageId,
-                              )
-                            }
+                              );
+                            }}
                             onDoubleClick={() => {
-                              if (!isDeleted) {
+                              if (
+                                !isDeleted &&
+                                !selectingMessages
+                              ) {
                                 toggleReaction(
                                   chat.messageId,
                                   "❤️",
@@ -4070,6 +4725,10 @@ const Middlebar: React.FC<
                                   onClick={(
                                     event,
                                   ) => {
+                                    if (selectingMessages) {
+                                      return;
+                                    }
+
                                     event.stopPropagation();
 
                                     if (
@@ -4156,6 +4815,7 @@ const Middlebar: React.FC<
                                 flex
                                 flex-wrap
                                 gap-1
+                                ${selectingMessages ? "pointer-events-none" : ""}
                                 ${
                                   isMine
                                     ? "mr-2 justify-end"
@@ -4165,58 +4825,91 @@ const Middlebar: React.FC<
                             >
                               {reactionGroups.map(
                                 (group) => (
-                                  <button
+                                  <Popover.Root
                                     key={
                                       group.emoji
                                     }
-                                    type="button"
-                                    title={
-                                      group.mine
-                                        ? "Click to remove your reaction"
-                                        : "React with this"
-                                    }
-                                    onClick={() =>
-                                      toggleReaction(
-                                        chat.messageId,
-                                        group.emoji,
-                                      )
-                                    }
-                                    className={`
-                                      flex
-                                      cursor-pointer
-                                      items-center
-                                      gap-0.5
-                                      rounded-full
-                                      border
-                                      bg-[var(--color-panel-solid)]
-                                      px-1.5
-                                      py-0.5
-                                      text-xs
-                                      shadow-sm
-                                      transition-transform
-                                      hover:scale-105
-                                      ${
-                                        group.mine
-                                          ? "border-sky-500/70"
-                                          : "border-[var(--gray-a4)]"
-                                      }
-                                    `}
                                   >
-                                    <span>
-                                      {
-                                        group.emoji
-                                      }
-                                    </span>
+                                    <Popover.Trigger>
+                                      <button
+                                        type="button"
+                                        title="See who reacted"
+                                        aria-label={`${group.count} reacted with ${group.emoji}. See who reacted`}
+                                        className={`
+                                          flex
+                                          cursor-pointer
+                                          items-center
+                                          gap-0.5
+                                          rounded-full
+                                          border
+                                          bg-[var(--color-panel-solid)]
+                                          px-1.5
+                                          py-0.5
+                                          text-xs
+                                          shadow-sm
+                                          transition-transform
+                                          hover:scale-105
+                                          ${
+                                            group.mine
+                                              ? "border-sky-500/70"
+                                              : "border-[var(--gray-a4)]"
+                                          }
+                                        `}
+                                      >
+                                        <span>
+                                          {
+                                            group.emoji
+                                          }
+                                        </span>
 
-                                    {group.count >
-                                      1 && (
-                                      <span className="text-[var(--gray-a11)]">
-                                        {
-                                          group.count
+                                        {group.count >
+                                          1 && (
+                                          <span className="text-[var(--gray-a11)]">
+                                            {
+                                              group.count
+                                            }
+                                          </span>
+                                        )}
+                                      </button>
+                                    </Popover.Trigger>
+
+                                    <Popover.Content
+                                      size="1"
+                                      side="top"
+                                      align={
+                                        isMine
+                                          ? "end"
+                                          : "start"
+                                      }
+                                    >
+                                      <ReactionDetails
+                                        reactions={
+                                          chat.reactions ??
+                                          []
                                         }
-                                      </span>
-                                    )}
-                                  </button>
+                                        initialEmoji={
+                                          group.emoji
+                                        }
+                                        myId={Number(
+                                          senderId,
+                                        )}
+                                        getName={
+                                          getSenderLabel
+                                        }
+                                        getAvatar={
+                                          getReactorAvatar
+                                        }
+                                        onRemoveMine={(
+                                          emoji,
+                                        ) =>
+                                          toggleReaction(
+                                            chat.messageId,
+                                            emoji,
+                                          )
+                                        }
+                                      />
+                                    </Popover.Content>
+                                  </Popover.Root>
                                 ),
                               )}
                             </div>
@@ -4414,7 +5107,76 @@ const Middlebar: React.FC<
           border-[var(--gray-a4)]
         "
       >
-        {selfDeactivated ||
+        {selectingMessages ? (
+          <Flex
+            align="center"
+            gap="2"
+            className="rounded bg-[var(--gray-a2)] px-3 py-2"
+          >
+            <IconButton
+              type="button"
+              size="2"
+              variant="ghost"
+              color="gray"
+              aria-label="Cancel selection"
+              onClick={stopSelectingMessages}
+              className="shrink-0 cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </IconButton>
+
+            <Text size="2" weight="medium" className="min-w-0 flex-1">
+              {selectedMessageIds.size === 0
+                ? "Select messages"
+                : `${selectedMessageIds.size} selected`}
+            </Text>
+
+            <Button
+              type="button"
+              size="2"
+              variant="soft"
+              color="gray"
+              onClick={() => {
+                const selectable = chats.filter(
+                  (chat) => chat.type !== "SYSTEM",
+                );
+
+                setSelectedMessageIds(
+                  selectedMessageIds.size === selectable.length
+                    ? new Set()
+                    : new Set(
+                        selectable.map(
+                          (chat) => chat.messageId,
+                        ),
+                      ),
+                );
+              }}
+            >
+              {selectedMessageIds.size > 0 &&
+              selectedMessageIds.size ===
+                chats.filter((chat) => chat.type !== "SYSTEM").length
+                ? "Unselect all"
+                : "Select all"}
+            </Button>
+
+            <Button
+              type="button"
+              size="2"
+              color="red"
+              disabled={selectedMessageIds.size === 0}
+              onClick={() =>
+                setPendingDelete(
+                  chats.filter((chat) =>
+                    selectedMessageIds.has(chat.messageId),
+                  ),
+                )
+              }
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </Button>
+          </Flex>
+        ) : selfDeactivated ||
         (!isGroup && conversationUser?.isDeactivated) ? (
           <Flex
             align="center"
@@ -4464,8 +5226,51 @@ const Middlebar: React.FC<
               Only admins can send messages in this group.
             </Text>
           </Flex>
+        ) : mySuspendedUntil ? (
+          <Flex
+            align="center"
+            justify="center"
+            gap="2"
+            className="rounded bg-amber-500/10 px-3 py-3"
+          >
+            <TimerOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+
+            <Text size="2" color="amber">
+              {isGroup
+                ? "An admin suspended you from sending messages"
+                : `${conversationUser?.fullName ?? "This person"} suspended you from sending messages`}{" "}
+              {formatUntil(mySuspendedUntil)}.
+            </Text>
+          </Flex>
         ) : (
         <>
+        {theirSuspendedUntil && (
+          <Flex
+            align="center"
+            gap="2"
+            wrap="wrap"
+            className="mb-2 rounded bg-amber-500/10 px-3 py-1.5"
+          >
+            <TimerOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+
+            <Text size="1" color="amber" className="min-w-0 flex-1">
+              You suspended {conversationUser?.fullName ?? "this person"}{" "}
+              {formatUntil(theirSuspendedUntil)}. They can&apos;t reply.
+            </Text>
+
+            <Button
+              size="1"
+              variant="soft"
+              color="amber"
+              loading={chatActionBusy}
+              onClick={() => void liftDirectSuspension()}
+            >
+              <TimerReset className="h-3.5 w-3.5" />
+              Lift
+            </Button>
+          </Flex>
+        )}
+
         {(replyingTo ||
           editingMessage) && (
           <Flex
@@ -4656,46 +5461,7 @@ const Middlebar: React.FC<
       {confirmDialog}
 
       {/* ====================================================
-          DELETE CHAT (for me)
-      ==================================================== */}
-
-      <AlertDialog.Root
-        open={confirmDeleteChat}
-        onOpenChange={setConfirmDeleteChat}
-      >
-        <AlertDialog.Content maxWidth="420px">
-          <AlertDialog.Title>
-            Delete this chat?
-          </AlertDialog.Title>
-
-          <AlertDialog.Description size="2">
-            The chat is removed from your list and its
-            history is cleared for you only.{" "}
-            {isGroup
-              ? "You stay in the group, and new messages will appear again."
-              : "The other person keeps their copy. New messages start a fresh chat."}
-          </AlertDialog.Description>
-
-          <Flex gap="3" mt="4" justify="end">
-            <AlertDialog.Cancel>
-              <Button variant="soft" color="gray">
-                Cancel
-              </Button>
-            </AlertDialog.Cancel>
-
-            <Button
-              color="red"
-              onClick={() => void deleteChat()}
-              loading={chatActionBusy}
-            >
-              Delete chat
-            </Button>
-          </Flex>
-        </AlertDialog.Content>
-      </AlertDialog.Root>
-
-      {/* ====================================================
-          UNSEND CONFIRMATION
+          DELETE CONFIRMATION (for me / for everyone)
       ==================================================== */}
 
       <AlertDialog.Root
@@ -4706,14 +5472,23 @@ const Middlebar: React.FC<
           }
         }}
       >
-        <AlertDialog.Content maxWidth="400px">
+        <AlertDialog.Content maxWidth="420px">
           <AlertDialog.Title>
-            Unsend message?
+            {pendingDelete && pendingDelete.length > 1
+              ? `Delete ${pendingDelete.length} messages?`
+              : "Delete message?"}
           </AlertDialog.Title>
 
           <AlertDialog.Description size="2">
-            This removes the message for
-            everyone in the conversation.
+            {canDeleteForEveryone
+              ? "Delete for everyone removes it from the chat for all members. Delete for me only hides it from your view."
+              : pendingDelete?.some(
+                    (chat) =>
+                      Number(chat.senderId) !==
+                      Number(senderId),
+                  )
+                ? "This hides the selected messages from your view only. Others in the chat can still see them."
+                : "This hides it from your view only."}{" "}
             This can&apos;t be undone.
           </AlertDialog.Description>
 
@@ -4721,6 +5496,7 @@ const Middlebar: React.FC<
             gap="3"
             mt="4"
             justify="end"
+            wrap="wrap"
           >
             <AlertDialog.Cancel>
               <Button
@@ -4733,12 +5509,34 @@ const Middlebar: React.FC<
 
             <AlertDialog.Action>
               <Button
+                variant={
+                  canDeleteForEveryone
+                    ? "soft"
+                    : "solid"
+                }
                 color="red"
-                onClick={confirmDelete}
+                onClick={() =>
+                  deleteMessages("me")
+                }
               >
-                Unsend
+                Delete for me
               </Button>
             </AlertDialog.Action>
+
+            {canDeleteForEveryone && (
+              <AlertDialog.Action>
+                <Button
+                  color="red"
+                  onClick={() =>
+                    deleteMessages(
+                      "everyone",
+                    )
+                  }
+                >
+                  Delete for everyone
+                </Button>
+              </AlertDialog.Action>
+            )}
           </Flex>
         </AlertDialog.Content>
       </AlertDialog.Root>

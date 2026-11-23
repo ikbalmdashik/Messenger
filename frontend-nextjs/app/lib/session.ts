@@ -3,7 +3,7 @@ import axios from "axios";
 import API_ENDPOINTS, { LogoutResult } from "@/app/routes/api";
 import Routes from "@/app/routes/routes";
 
-const AUTH_CHANNEL = "auth_channel";
+export const AUTH_CHANNEL = "auth_channel";
 
 export const broadcastAuth = (type: "LOGOUT" | "ACCOUNT_SWITCHED") => {
   try {
@@ -16,21 +16,31 @@ export const broadcastAuth = (type: "LOGOUT" | "ACCOUNT_SWITCHED") => {
 };
 
 /**
- * Log out the active account. If another saved
- * account is signed in, the server switches to it
- * and we reload the chat; otherwise go to login.
+ * Log out the active account and go to the sign-in
+ * page. Other saved accounts stay signed in and are
+ * listed there, but none is opened automatically.
  */
-export const logoutAndRedirect = async () => {
-  const response = await axios.post<LogoutResult>(
-    API_ENDPOINTS.Logout,
-    {},
-    { withCredentials: true },
-  );
+let loggingOut = false;
 
-  if (response.data?.switchedTo) {
-    broadcastAuth("ACCOUNT_SWITCHED");
-    window.location.assign(Routes.Chat);
-    return;
+/**
+ * This tab started the logout itself, so it goes to
+ * the sign-in page and ignores the live "logged out"
+ * event for its own session.
+ */
+export const isLoggingOut = () => loggingOut;
+
+export const logoutAndRedirect = async () => {
+  loggingOut = true;
+
+  try {
+    await axios.post<LogoutResult>(
+      API_ENDPOINTS.Logout,
+      {},
+      { withCredentials: true },
+    );
+  } catch (error) {
+    loggingOut = false;
+    throw error;
   }
 
   broadcastAuth("LOGOUT");

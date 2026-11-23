@@ -14,10 +14,14 @@ import {
 
 import { ChatMessageEntity } from "./entities/chat.entity";
 import { MessageReactionEntity } from "./entities/message-reaction.entity";
+import { MessageHiddenEntity } from "./entities/message-hidden.entity";
 
 import { ConversationService } from "./conversation/conversation.service";
 
-import { ConversationParticipantEntity } from "./conversation/entities/conversation-participant.entity";
+import {
+  activeSuspension,
+  ConversationParticipantEntity,
+} from "./conversation/entities/conversation-participant.entity";
 
 import { UsersEntity } from "@/auth/entities/auth.entity";
 import { AuthService } from "@/auth/auth.service";
@@ -72,6 +76,9 @@ export class ChatService {
 
     @InjectRepository(UsersEntity)
     private readonly userRepository: Repository<UsersEntity>,
+
+    @InjectRepository(MessageHiddenEntity)
+    private readonly hiddenRepository: Repository<MessageHiddenEntity>,
 
     private readonly conversationService: ConversationService,
 
@@ -298,6 +305,18 @@ export class ChatService {
       );
     }
 
+    /*
+     * "Delete for me" hides single messages.
+     */
+    query.andWhere(
+      `NOT EXISTS (
+        SELECT 1 FROM "message_hidden" hidden
+        WHERE hidden."messageId" = chat."messageId"
+          AND hidden."userId" = :viewerId
+      )`,
+      { viewerId: normalizedUserId },
+    );
+
     const numericLimit = Number(limit);
 
     if (
@@ -490,6 +509,15 @@ export class ChatService {
           if (!senderParticipant) {
             throw new BadRequestException(
               "You are not a participant of this conversation.",
+            );
+          }
+
+          const suspendedUntil =
+            activeSuspension(senderParticipant);
+
+          if (suspendedUntil) {
+            throw new ForbiddenException(
+              "You're suspended from sending messages in this chat.",
             );
           }
 
@@ -777,6 +805,179 @@ export class ChatService {
     );
   }
 
+  /**
+   * Normalize a list of message ids from the client.
+   */
+  private normalizeMessageIds(
+    messageIds: unknown,
+  ): number[] {
+    if (!Array.isArray(messageIds)) {
+      throw new BadRequestException(
+        "messageIds must be a list.",
+      );
+    }
+
+    const ids = [
+      ...new Set(
+        messageIds
+          .map((id) => Number(id))
+          .filter(
+            (id) =>
+              Number.isInteger(id) && id > 0,
+          ),
+      ),
+    ];
+
+    if (ids.length === 0) {
+      throw new BadRequestException(
+        "Select at least one message.",
+      );
+    }
+
+    if (ids.length > MAX_PAGE_SIZE) {
+      throw new BadRequestException(
+        `You can delete up to ${MAX_PAGE_SIZE} messages at once.`,
+      );
+    }
+
+    return ids;
+  }
+
+  /**
+   * Load messages that all belong to one
+   * conversation the user is part of.
+   */
+  private async getMessagesInOneConversation(
+    userId: number,
+    messageIds: number[],
+  ) {
+    const messages =
+      await this.messageRepository.find({
+        where: { messageId: In(messageIds) },
+      });
+
+    if (messages.length !== messageIds.length) {
+      throw new NotFoundException(
+        "Some messages were not found.",
+      );
+    }
+
+    const conversationIds = new Set(
+      messages.map((message) =>
+        Number(message.conversationId),
+      ),
+    );
+
+    if (conversationIds.size !== 1) {
+      throw new BadRequestException(
+        "Messages must be from the same chat.",
+      );
+    }
+
+    const conversationId =
+      Number(messages[0].conversationId);
+
+    await this.conversationService.getConversationForUser(
+      conversationId,
+      Number(userId),
+    );
+
+    return { conversationId, messages };
+  }
+
+  /**
+   * "Delete for me": hide messages from this
+   * user's view only. Works on any message in a
+   * chat the user belongs to.
+   */
+  async HideMessages(
+    userId: number,
+    messageIds: unknown,
+  ) {
+    const ids =
+      this.normalizeMessageIds(messageIds);
+
+    const { conversationId } =
+      await this.getMessagesInOneConversation(
+        userId,
+        ids,
+      );
+
+    await this.hiddenRepository
+      .createQueryBuilder()
+      .insert()
+      .into(MessageHiddenEntity)
+      .values(
+        ids.map((messageId) => ({
+          messageId,
+          userId: Number(userId),
+        })),
+      )
+      .orIgnore()
+      .execute();
+
+    return { conversationId, messageIds: ids };
+  }
+
+  /**
+   * "Delete for everyone" (unsend) for several
+   * messages. Every message must be the user's own.
+   */
+  async DeleteMessages(
+    userId: number,
+    messageIds: unknown,
+  ) {
+    const ids =
+      this.normalizeMessageIds(messageIds);
+
+    const { messages } =
+      await this.getMessagesInOneConversation(
+        userId,
+        ids,
+      );
+
+    const active = messages.filter(
+      (message) => !message.isDeleted,
+    );
+
+    for (const message of active) {
+      if (
+        Number(message.senderId) !==
+        Number(userId)
+      ) {
+        throw new ForbiddenException(
+          "You can only unsend your own messages.",
+        );
+      }
+
+      if (message.type === "SYSTEM") {
+        throw new BadRequestException(
+          "System messages can't be unsent.",
+        );
+      }
+    }
+
+    if (active.length === 0) {
+      return [];
+    }
+
+    await this.reactionRepository.delete({
+      messageId: In(
+        active.map((message) => message.messageId),
+      ),
+    });
+
+    for (const message of active) {
+      message.isDeleted = true;
+      message.message = "";
+    }
+
+    const saved =
+      await this.messageRepository.save(active);
+
+    return await this.serializeMessages(saved);
+  }
+
   /* ==========================================================
      REACTIONS
   ========================================================== */
@@ -795,9 +996,20 @@ export class ChatService {
         ? emoji.trim()
         : "";
 
+    // Custom reactions are allowed, but must be a
+    // single emoji, not arbitrary text.
+    const isEmoji =
+      /^(?:[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Component}‍️⃣])+$/u.test(
+        normalizedEmoji,
+      ) &&
+      /[\p{Extended_Pictographic}\p{Regional_Indicator}⃣]/u.test(
+        normalizedEmoji,
+      );
+
     if (
       !normalizedEmoji ||
-      normalizedEmoji.length > 16
+      normalizedEmoji.length > 16 ||
+      !isEmoji
     ) {
       throw new BadRequestException(
         "Invalid reaction.",

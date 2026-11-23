@@ -11,6 +11,7 @@ import React, {
 import axios from "axios";
 
 import { io, Socket } from "socket.io-client";
+import ProfileHoverCard from "../../shared/ProfileHoverCard";
 
 import {
   AnimatePresence,
@@ -23,7 +24,6 @@ import {
   Box,
   Button,
   Flex,
-  ScrollArea,
   Text,
   TextField,
 } from "@radix-ui/themes";
@@ -1812,7 +1812,7 @@ const ChatSidebar: React.FC<
   return (
     <Flex
       direction="column"
-      className="h-full w-full backdrop-blur-xl"
+      className="h-full w-full min-w-0 overflow-hidden backdrop-blur-xl"
     >
       {/* ====================================================
           HEADER
@@ -1903,8 +1903,12 @@ const ChatSidebar: React.FC<
           CONVERSATION LIST
       ==================================================== */}
 
-      <ScrollArea className="min-h-0 flex-1">
-        <Box className="px-2 pb-4">
+      {/* Plain vertical scroller: Radix ScrollArea
+          wraps content in a `display: table` div that
+          grows with long previews, so rows never
+          truncated. This one can't scroll sideways. */}
+      <div className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <Box className="min-w-0 px-2 pb-4">
           <AnimatePresence mode="popLayout">
             {/* =================================================
                 PUBLIC ID SEARCH
@@ -2185,25 +2189,36 @@ const ChatSidebar: React.FC<
                               justify="between"
                               gap="2"
                             >
-                              <Text
-                                size="2"
-                                weight={
-                                  isUnread
-                                    ? "bold"
-                                    : "medium"
+                              {/* Direct chats: hover the name
+                                  for a profile overview. */}
+                              <ProfileHoverCard
+                                publicId={
+                                  isGroup
+                                    ? null
+                                    : conversation.publicId
                                 }
-                                className={`truncate ${
-                                  isUnread
-                                    ? "text-gray-950 dark:text-white"
-                                    : "text-gray-900 dark:text-white"
-                                }`}
+                                side="right"
                               >
-                                {isGroup
-                                  ? conversation.name ||
-                                    "Group"
-                                  : conversation.fullName ||
-                                    "Unknown User"}
-                              </Text>
+                              <Text
+                                  size="2"
+                                  weight={
+                                    isUnread
+                                      ? "bold"
+                                      : "medium"
+                                  }
+                                  className={`min-w-0 truncate ${
+                                    isUnread
+                                      ? "text-gray-950 dark:text-white"
+                                      : "text-gray-900 dark:text-white"
+                                  }`}
+                                >
+                                  {isGroup
+                                    ? conversation.name ||
+                                      "Group"
+                                    : conversation.fullName ||
+                                      "Unknown User"}
+                                </Text>
+                              </ProfileHoverCard>
 
                               {isSelected && (
                                 <UserCheck
@@ -2329,7 +2344,7 @@ const ChatSidebar: React.FC<
             )}
           </AnimatePresence>
         </Box>
-      </ScrollArea>
+      </div>
     </Flex>
   );
 };

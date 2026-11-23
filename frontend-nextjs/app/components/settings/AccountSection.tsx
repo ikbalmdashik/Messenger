@@ -20,6 +20,8 @@ interface AccountSectionProps {
   profile: MyProfile;
   onProfileChange: (profile: MyProfile) => void;
   protect: (options: ConfirmOptions) => Promise<string | null>;
+  /** Plain yes/no, no password check. */
+  confirm: (options: ConfirmOptions) => Promise<boolean>;
 }
 
 type Busy = "logout" | "reset" | "activation" | "delete" | null;
@@ -28,6 +30,7 @@ const AccountSection: React.FC<AccountSectionProps> = ({
   profile,
   onProfileChange,
   protect,
+  confirm,
 }) => {
   const [busy, setBusy] = useState<Busy>(null);
 
@@ -57,6 +60,17 @@ const AccountSection: React.FC<AccountSectionProps> = ({
   };
 
   const logout = async () => {
+    const ok = await confirm({
+      title: "Log out?",
+      description: `You'll be logged out of ${profile.fullName} (${profile.email}) on this browser.`,
+      confirmLabel: "Log out",
+      danger: true,
+    });
+
+    if (!ok) {
+      return;
+    }
+
     try {
       setBusy("logout");
       await logoutAndRedirect();
@@ -188,7 +202,7 @@ const AccountSection: React.FC<AccountSectionProps> = ({
       <SettingsCard title="Session">
         <SettingRow
           label="Log out"
-          hint="If another account is signed in on this browser, you'll switch to it."
+          hint="Other accounts signed in on this browser stay signed in. You can pick one on the sign-in page."
         >
           <Button
             variant="soft"

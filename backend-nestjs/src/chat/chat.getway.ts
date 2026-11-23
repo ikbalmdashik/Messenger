@@ -1326,6 +1326,98 @@ export class ChatGateway {
 
   /**
    * ==========================================
+   * DELETE MESSAGES (for me / for everyone)
+   * ==========================================
+   *
+   * scope "me"       -> hide from my view only
+   * scope "everyone" -> unsend (own messages only)
+   */
+  @SubscribeMessage("delete_messages")
+  async HandleDeleteMessages(
+    @MessageBody()
+    data: {
+      messageIds: number[];
+      scope: "me" | "everyone";
+    },
+
+    @ConnectedSocket()
+    client: Socket,
+  ) {
+    try {
+      const userId =
+        this.getSocketUserId(client);
+
+      if (!userId) {
+        return {
+          success: false,
+          message: "Unauthorized.",
+        };
+      }
+
+      if (data?.scope === "everyone") {
+        const deleted =
+          await this.chatService.DeleteMessages(
+            userId,
+            data?.messageIds,
+          );
+
+        for (const message of deleted) {
+          this.emitMessageUpdated(message);
+        }
+
+        if (deleted.length > 0) {
+          this.refreshSidebarsQuietly(
+            deleted[0].conversationId,
+          );
+        }
+
+        return {
+          success: true,
+          messages: deleted,
+        };
+      }
+
+      const hidden =
+        await this.chatService.HideMessages(
+          userId,
+          data?.messageIds,
+        );
+
+      // Only this user's own tabs/devices.
+      this.emitToUsers(
+        [userId],
+        "messages_hidden",
+        hidden,
+      );
+
+      const item =
+        await this.conversationService.getSidebarItem(
+          hidden.conversationId,
+          userId,
+        );
+
+      if (item) {
+        this.emitToUsers(
+          [userId],
+          "conversation_updated",
+          item,
+        );
+      }
+
+      return {
+        success: true,
+        ...hidden,
+      };
+    } catch (error) {
+      return this.errorResponse(
+        error,
+        "Unable to delete messages.",
+      );
+    }
+  }
+
+  /**
+   * ==========================================
    * TOGGLE REACTION
    * ==========================================
    */

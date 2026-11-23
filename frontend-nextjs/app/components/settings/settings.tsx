@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useState } from "react";
 
 import axios from "axios";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import { Box, Button, Flex, Heading, Text } from "@radix-ui/themes";
 
@@ -22,9 +21,11 @@ import API_ENDPOINTS, { MyProfile } from "@/app/routes/api";
 import Routes from "@/app/routes/routes";
 
 import FullScreenSpinner from "../spinner";
+import AuthRequired from "../shared/AuthRequired";
 
 import useVerification from "./useVerification";
 import useConfirm, { ConfirmOptions } from "../shared/useConfirm";
+import useSessionEvents from "@/app/lib/useSessionEvents";
 import ProfileSection from "./ProfileSection";
 import PrivacySection from "./PrivacySection";
 import GroupsSection from "./GroupsSection";
@@ -47,14 +48,30 @@ const isTab = (value: string | null): value is TabId =>
   TABS.some((tab) => tab.id === value);
 
 const SettingsComponent: React.FC = () => {
-  const router = useRouter();
 
   const [tab, setTab] = useState<TabId>("profile");
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
 
   const { verify, verificationModal } = useVerification(profile?.email);
   const { confirm, confirmDialog } = useConfirm();
+
+  /*
+   * Live: logged out elsewhere -> login page; a login
+   * or logout on this account -> refresh the list.
+   */
+  const [sessionsVersion, setSessionsVersion] = useState(0);
+
+  useSessionEvents({
+    onSessionsChanged: () => setSessionsVersion((value) => value + 1),
+    // Drop the account data right away, so it isn't
+    // shown again if the user comes back with Back.
+    onRevoked: () => {
+      setProfile(null);
+      setIsAuthenticated(false);
+    },
+  });
 
   /**
    * Every protected change: show what will change,
@@ -100,19 +117,26 @@ const SettingsComponent: React.FC = () => {
       );
 
       setProfile(response.data);
+      setIsAuthenticated(true);
     } catch {
-      router.replace(Routes.Login);
+      // Same as the chat page: no session, no data.
+      setProfile(null);
+      setIsAuthenticated(false);
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading || !profile) {
+  if (loading) {
     return <FullScreenSpinner />;
+  }
+
+  if (!isAuthenticated || !profile) {
+    return <AuthRequired what="settings" />;
   }
 
   const sectionProps = {
@@ -191,9 +215,16 @@ const SettingsComponent: React.FC = () => {
           {tab === "profile" && <ProfileSection {...sectionProps} />}
           {tab === "privacy" && <PrivacySection {...sectionProps} />}
           {tab === "groups" && <GroupsSection {...sectionProps} />}
-          {tab === "sessions" && <SessionsSection protect={protect} />}
+          {tab === "sessions" && (
+            <SessionsSection
+              protect={protect}
+              refreshKey={sessionsVersion}
+            />
+          )}
           {tab === "blocked" && <BlockedSection />}
-          {tab === "account" && <AccountSection {...sectionProps} />}
+          {tab === "account" && (
+            <AccountSection {...sectionProps} confirm={confirm} />
+          )}
         </Box>
       </Flex>
 

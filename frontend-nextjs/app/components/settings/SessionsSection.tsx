@@ -85,16 +85,21 @@ const formatWhen = (value: string) => {
 
 interface SessionsSectionProps {
   protect: (options: ConfirmOptions) => Promise<string | null>;
+  /** Bumped on live login/logout events. */
+  refreshKey?: number;
 }
 
-const SessionsSection: React.FC<SessionsSectionProps> = ({ protect }) => {
+const SessionsSection: React.FC<SessionsSectionProps> = ({
+  protect,
+  refreshKey = 0,
+}) => {
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | "others" | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (quiet = false) => {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
 
       const response = await axios.post<ActiveSession[]>(
         API_ENDPOINTS.Sessions,
@@ -113,6 +118,13 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({ protect }) => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Live updates: refresh without the "Loading…" flash.
+  useEffect(() => {
+    if (refreshKey > 0) {
+      void load(true);
+    }
+  }, [refreshKey, load]);
 
   const revoke = async (session: ActiveSession) => {
     const verificationToken = await protect({
@@ -148,15 +160,23 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({ protect }) => {
   };
 
   const revokeOthers = async () => {
+    // Several sessions can share a device and IP:
+    // list each once, with a count.
+    const counts = new Map<string, number>();
+
+    for (const session of sessions) {
+      if (session.isCurrent) continue;
+
+      const label = `${describeDevice(session.deviceInfo).label} (${session.ipAddress})`;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+
     const verificationToken = await protect({
       title: "Sign out all other devices?",
       consequences: [
-        ...sessions
-          .filter((session) => !session.isCurrent)
-          .map(
-            (session) =>
-              `${describeDevice(session.deviceInfo).label} (${session.ipAddress})`,
-          ),
+        ...[...counts].map(([label, count]) =>
+          count > 1 ? `${label} — ${count} sessions` : label,
+        ),
         "This device stays signed in.",
       ],
       confirmLabel: "Continue",

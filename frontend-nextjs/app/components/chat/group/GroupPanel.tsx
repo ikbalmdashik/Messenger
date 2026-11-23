@@ -13,6 +13,7 @@ import {
   Box,
   Button,
   Card,
+  Checkbox,
   DropdownMenu,
   Flex,
   IconButton,
@@ -26,13 +27,21 @@ import {
 
 import {
   ArrowLeft,
+  CheckSquare,
   Crown,
   LogOut,
   MoreHorizontal,
   Pencil,
+  Search,
   Shield,
+  ShieldOff,
+  TimerOff,
+  TimerReset,
+  Trash2,
+  UserMinus,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
 
 import API_ENDPOINTS, {
@@ -52,6 +61,14 @@ import useConfirm, {
 import UserPicker, {
   PickedUser,
 } from "../shared/UserPicker";
+import { HighlightAction, Section } from "../shared/PanelParts";
+import ProfileHoverCard from "../../shared/ProfileHoverCard";
+import SuspendDialog from "../shared/SuspendDialog";
+import {
+  activeUntil,
+  formatUntil,
+  nextExpiry,
+} from "@/app/lib/suspension";
 
 interface GroupPanelProps {
   group: GroupDetails | null;
@@ -96,10 +113,34 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
   const [busy, setBusy] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
 
+  /** Members section expanded (opened by "Add"). */
+  const [membersOpen, setMembersOpen] = useState(true);
+
+  /** Filter the member list by name or @publicId. */
+  const [memberQuery, setMemberQuery] = useState("");
+
+  useEffect(() => {
+    setMemberQuery("");
+  }, [group?.conversationId]);
+
   /**
    * Chosen successor when the last admin leaves.
    */
   const [newAdminId, setNewAdminId] = useState<string>("");
+
+  /** Multi-select of members (admins only). */
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(
+    () => new Set(),
+  );
+
+  /** Who the suspend dialog is for. */
+  const [suspendTargets, setSuspendTargets] = useState<
+    GroupMember[] | null
+  >(null);
+
+  /** Re-render when a suspension runs out. */
+  const [, setTick] = useState(0);
 
   const { confirm, confirmDialog } = useConfirm();
 
@@ -107,7 +148,42 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
     setEditingInfo(false);
     setAdding(false);
     setNewMembers([]);
+    setMembersOpen(true);
+    setSelecting(false);
+    setSelectedIds(new Set());
+    setSuspendTargets(null);
   }, [group?.conversationId]);
+
+  const expiresAt = nextExpiry(
+    group?.members.map((member) => member.suspendedUntil) ?? [],
+  );
+
+  useEffect(() => {
+    if (!expiresAt) {
+      return;
+    }
+
+    const timer = window.setTimeout(
+      () => setTick((value) => value + 1),
+      Math.min(Math.max(expiresAt - Date.now() + 500, 500), 2 ** 31 - 1),
+    );
+
+    return () => window.clearTimeout(timer);
+  }, [expiresAt]);
+
+  /* Drop selections of members who left. */
+  useEffect(() => {
+    if (!group) {
+      return;
+    }
+
+    setSelectedIds((current) => {
+      const ids = new Set(group.members.map((member) => member.userId));
+      const next = new Set([...current].filter((id) => ids.has(id)));
+
+      return next.size === current.size ? current : next;
+    });
+  }, [group]);
 
   if (!group) {
     return (
@@ -278,6 +354,177 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
     }
   };
 
+  /**
+   * Delete the chat for me (I stay a member). The
+   * server's "conversation_deleted" event closes it.
+   */
+  const deleteChat = async () => {
+    const ok = await confirm({
+      title: `Delete "${group.name}" chat?`,
+      consequences: [
+        "All messages are removed for you.",
+        "You stay in the group; new messages will show up again.",
+        "Other members keep their copies.",
+      ],
+      confirmLabel: "Delete chat",
+      danger: true,
+    });
+
+    if (!ok) {
+      return;
+    }
+
+    try {
+      setBusy(true);
+
+      await axios.post(
+        API_ENDPOINTS.DeleteChat,
+        { conversationId: group.conversationId },
+        { withCredentials: true },
+      );
+
+      toast.success("Chat deleted.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Couldn't delete the chat."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startAdding = () => {
+    setMembersOpen(true);
+    setAdding(true);
+  };
+
+  /**
+   * May I remove / suspend this member? Admins can act
+   * on members; only the creator can act on admins.
+   */
+  const canModerate = (member: GroupMember) =>
+    isAdmin &&
+    member.userId !== currentUserId &&
+    !isCreator(member) &&
+    (member.role === "MEMBER" || currentUserId === group.createdById);
+
+  const moderatable = group.members.filter(canModerate);
+
+  const normalizedQuery = memberQuery
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, "");
+
+  const visibleMembers = normalizedQuery
+    ? group.members.filter(
+        (member) =>
+          member.fullName.toLowerCase().includes(normalizedQuery) ||
+          member.publicId.toLowerCase().includes(normalizedQuery),
+      )
+    : group.members;
+
+  const selectedMembers = moderatable.filter((member) =>
+    selectedIds.has(member.userId),
+  );
+
+  const selectedSuspended = selectedMembers.filter((member) =>
+    activeUntil(member.suspendedUntil),
+  );
+
+  const toggleSelected = (userId: number) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+
+      return next;
+    });
+  };
+
+  const stopSelecting = () => {
+    setSelecting(false);
+    setSelectedIds(new Set());
+  };
+
+  const peopleLabel = (members: GroupMember[]) =>
+    members.length === 1
+      ? members[0].fullName
+      : `${members.length} members`;
+
+  const removeMembers = async (members: GroupMember[]) => {
+    const ok = await mutate(
+      API_ENDPOINTS.RemoveGroupMembers,
+      { userIds: members.map((member) => member.userId) },
+      `${peopleLabel(members)} removed.`,
+      {
+        title: `Remove ${peopleLabel(members)}?`,
+        changes: [
+          {
+            label: "Members",
+            from: String(group.members.length),
+            to: String(group.members.length - members.length),
+          },
+        ],
+        consequences: [
+          ...members.map(
+            (member) =>
+              `${member.fullName} leaves "${group.name}" and stops getting its messages.`,
+          ),
+          "They can be added back later.",
+        ],
+        confirmLabel: "Remove",
+        danger: true,
+      },
+    );
+
+    if (ok) {
+      stopSelecting();
+    }
+  };
+
+  const suspendMembers = async (minutes: number | null) => {
+    if (!suspendTargets || suspendTargets.length === 0) {
+      return;
+    }
+
+    const ok = await mutate(
+      API_ENDPOINTS.SuspendGroupMembers,
+      {
+        userIds: suspendTargets.map((member) => member.userId),
+        durationMinutes: minutes,
+      },
+      `${peopleLabel(suspendTargets)} suspended.`,
+    );
+
+    if (ok) {
+      setSuspendTargets(null);
+      stopSelecting();
+    }
+  };
+
+  const unsuspendMembers = async (members: GroupMember[]) => {
+    const ok = await mutate(
+      API_ENDPOINTS.UnsuspendGroupMembers,
+      { userIds: members.map((member) => member.userId) },
+      members.length === 1
+        ? `${members[0].fullName} can send messages again.`
+        : `${members.length} members can send messages again.`,
+      {
+        title: `Lift suspension of ${peopleLabel(members)}?`,
+        consequences: [
+          `${members.length === 1 ? "They" : "They all"} can send messages in "${group.name}" right away.`,
+        ],
+        confirmLabel: "Lift suspension",
+      },
+    );
+
+    if (ok) {
+      stopSelecting();
+    }
+  };
+
   return (
     <Flex direction="column" className="h-full min-h-0">
       {onBack && (
@@ -387,34 +634,81 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
             )}
           </Flex>
 
+          {/* ==================================================
+              HIGHLIGHTED ACTIONS
+          ================================================== */}
+
+          <Flex gap="1">
+            <HighlightAction
+              icon={<UserPlus size={18} />}
+              label="Add people"
+              disabled={busy || !can("addMembers")}
+              title={
+                can("addMembers")
+                  ? undefined
+                  : "Only admins can add members"
+              }
+              onClick={startAdding}
+            />
+
+            <HighlightAction
+              icon={<LogOut size={18} />}
+              label="Leave"
+              danger
+              disabled={busy}
+              onClick={() => {
+                setNewAdminId("");
+                setConfirmLeave(true);
+              }}
+            />
+
+            <HighlightAction
+              icon={<Trash2 size={18} />}
+              label="Delete chat"
+              danger
+              disabled={busy}
+              onClick={() => void deleteChat()}
+            />
+          </Flex>
+
           <Separator size="4" />
 
           {/* ==================================================
               MEMBERS
           ================================================== */}
 
-          <Flex align="center" justify="between">
-            <Flex align="center" gap="2">
-              <Users size={16} />
-              <Text size="2" weight="bold">
-                Members
+          <Section
+            icon={<Users size={15} />}
+            title={`Members (${group.members.length})`}
+            open={membersOpen}
+            onOpenChange={setMembersOpen}
+          >
+          {selecting && (
+            <Flex
+              align="center"
+              justify="between"
+              gap="2"
+              mb="2"
+              className="rounded bg-[var(--accent-a3)] px-2 py-1.5"
+            >
+              <Text size="2" weight="medium">
+                {selectedMembers.length} selected
               </Text>
-            </Flex>
 
-            {can("addMembers") && !adding && (
               <Button
                 size="1"
-                variant="soft"
-                onClick={() => setAdding(true)}
+                variant="ghost"
+                color="gray"
+                onClick={stopSelecting}
               >
-                <UserPlus size={14} />
-                Add
+                <X size={13} />
+                Cancel
               </Button>
-            )}
-          </Flex>
+            </Flex>
+          )}
 
           {adding && (
-            <Card>
+            <Card mb="2">
               <Flex direction="column" gap="3">
                 <UserPicker
                   selected={newMembers}
@@ -448,16 +742,57 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
             </Card>
           )}
 
+          {group.members.length > 1 && (
+            <TextField.Root
+              size="2"
+              mb="2"
+              placeholder="Search members"
+              aria-label="Search members"
+              value={memberQuery}
+              onChange={(event) => setMemberQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setMemberQuery("");
+                }
+              }}
+            >
+              <TextField.Slot>
+                <Search size={14} />
+              </TextField.Slot>
+
+              {memberQuery && (
+                <TextField.Slot>
+                  <IconButton
+                    size="1"
+                    variant="ghost"
+                    color="gray"
+                    aria-label="Clear search"
+                    onClick={() => setMemberQuery("")}
+                  >
+                    <X size={13} />
+                  </IconButton>
+                </TextField.Slot>
+              )}
+            </TextField.Root>
+          )}
+
+          {visibleMembers.length === 0 && (
+            <Text size="2" color="gray" className="block px-2 py-3 text-center">
+              No members match &ldquo;{memberQuery.trim()}&rdquo;.
+            </Text>
+          )}
+
           <Flex direction="column" gap="1">
-            {group.members.map((member) => {
+            {visibleMembers.map((member) => {
               const isMe = member.userId === currentUserId;
 
-              const canRemove =
-                isAdmin &&
-                !isMe &&
-                !isCreator(member) &&
-                (member.role === "MEMBER" ||
-                  currentUserId === group.createdById);
+              const canRemove = canModerate(member);
+
+              const suspendedUntil = activeUntil(member.suspendedUntil);
+
+              const selectable = selecting && canRemove;
+
+              const isSelected = selectedIds.has(member.userId);
 
               const canPromote =
                 isAdmin && member.role === "MEMBER";
@@ -476,8 +811,27 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
                   key={member.userId}
                   align="center"
                   gap="3"
-                  className="rounded px-2 py-2 hover:bg-[var(--gray-a3)]"
+                  onClick={
+                    selectable
+                      ? () => toggleSelected(member.userId)
+                      : undefined
+                  }
+                  className={`rounded px-2 py-2 hover:bg-[var(--gray-a3)] ${
+                    selectable ? "cursor-pointer" : ""
+                  } ${isSelected ? "bg-[var(--accent-a3)]" : ""} ${
+                    selecting && !canRemove ? "opacity-60" : ""
+                  }`}
                 >
+                  {selecting && (
+                    <Checkbox
+                      checked={isSelected}
+                      disabled={!canRemove}
+                      onClick={(event) => event.stopPropagation()}
+                      onCheckedChange={() => toggleSelected(member.userId)}
+                      aria-label={`Select ${member.fullName}`}
+                    />
+                  )}
+
                   <Avatar
                     size="2"
                     radius="full"
@@ -485,17 +839,32 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
                   />
 
                   <Box className="min-w-0 flex-1">
-                    <Link
-                      href={`/${encodeURIComponent(member.publicId)}`}
-                      className="block truncate text-sm font-medium hover:underline"
-                    >
-                      {member.fullName}
-                      {isMe ? " (You)" : ""}
-                    </Link>
+                    <ProfileHoverCard publicId={member.publicId} side="left">
+                      <Link
+                        href={`/${encodeURIComponent(member.publicId)}`}
+                        // inline-block: the hover card only opens
+                        // over the name, not the whole row width.
+                        className="inline-block max-w-full truncate align-top text-sm font-medium hover:underline"
+                      >
+                        {member.fullName}
+                        {isMe ? " (You)" : ""}
+                      </Link>
+                    </ProfileHoverCard>
 
                     <Text size="1" color="gray" className="block truncate">
                       @{member.publicId}
                     </Text>
+
+                    {suspendedUntil && (
+                      <Text
+                        size="1"
+                        color="amber"
+                        className="mt-0.5 flex items-center gap-1"
+                      >
+                        <TimerOff size={11} className="shrink-0" />
+                        Suspended {formatUntil(suspendedUntil)}
+                      </Text>
+                    )}
                   </Box>
 
                   {isCreator(member) ? (
@@ -512,7 +881,91 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
                     )
                   )}
 
-                  {hasActions && (
+                  {selecting
+                    ? canRemove && (
+                        <DropdownMenu.Root>
+                          <DropdownMenu.Trigger>
+                            <IconButton
+                              size="1"
+                              variant="ghost"
+                              color="gray"
+                              aria-label="Actions for selected members"
+                              disabled={busy}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <MoreHorizontal size={16} />
+                            </IconButton>
+                          </DropdownMenu.Trigger>
+
+                          <DropdownMenu.Content
+                            align="end"
+                            // React bubbles portal clicks to the
+                            // row, which would toggle selection
+                            // a second time.
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <DropdownMenu.Item
+                              onSelect={() => toggleSelected(member.userId)}
+                            >
+                              <CheckSquare size={14} />
+                              {isSelected ? "Unselect" : "Select"}
+                            </DropdownMenu.Item>
+
+                            {selectedMembers.length < moderatable.length && (
+                              <DropdownMenu.Item
+                                onSelect={() =>
+                                  setSelectedIds(
+                                    new Set(
+                                      moderatable.map((item) => item.userId),
+                                    ),
+                                  )
+                                }
+                              >
+                                <CheckSquare size={14} />
+                                Select all ({moderatable.length})
+                              </DropdownMenu.Item>
+                            )}
+
+                            <DropdownMenu.Separator />
+
+                            <DropdownMenu.Item
+                              disabled={selectedMembers.length === 0}
+                              onSelect={() => setSuspendTargets(selectedMembers)}
+                            >
+                              <TimerOff size={14} />
+                              Suspend {peopleLabel(selectedMembers)}…
+                            </DropdownMenu.Item>
+
+                            {selectedSuspended.length > 0 && (
+                              <DropdownMenu.Item
+                                onSelect={() =>
+                                  void unsuspendMembers(selectedSuspended)
+                                }
+                              >
+                                <TimerReset size={14} />
+                                Lift suspension ({selectedSuspended.length})
+                              </DropdownMenu.Item>
+                            )}
+
+                            <DropdownMenu.Item
+                              color="red"
+                              disabled={selectedMembers.length === 0}
+                              onSelect={() => void removeMembers(selectedMembers)}
+                            >
+                              <UserMinus size={14} />
+                              Remove {peopleLabel(selectedMembers)}
+                            </DropdownMenu.Item>
+
+                            <DropdownMenu.Separator />
+
+                            <DropdownMenu.Item onSelect={stopSelecting}>
+                              <X size={14} />
+                              Cancel selection
+                            </DropdownMenu.Item>
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Root>
+                      )
+                    : hasActions && (
                     <DropdownMenu.Root>
                       <DropdownMenu.Trigger>
                         <IconButton
@@ -526,7 +979,29 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
                         </IconButton>
                       </DropdownMenu.Trigger>
 
-                      <DropdownMenu.Content align="end">
+                      <DropdownMenu.Content
+                            align="end"
+                            // React bubbles portal clicks to the
+                            // row, which would toggle selection
+                            // a second time.
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                        {canRemove && (
+                          <>
+                            <DropdownMenu.Item
+                              onSelect={() => {
+                                setSelecting(true);
+                                setSelectedIds(new Set([member.userId]));
+                              }}
+                            >
+                              <CheckSquare size={14} />
+                              Select
+                            </DropdownMenu.Item>
+
+                            <DropdownMenu.Separator />
+                          </>
+                        )}
+
                         {canPromote && (
                           <DropdownMenu.Item
                             onSelect={() =>
@@ -554,6 +1029,7 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
                               )
                             }
                           >
+                            <Shield size={14} />
                             Make admin
                           </DropdownMenu.Item>
                         )}
@@ -589,6 +1065,7 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
                               )
                             }
                           >
+                            <ShieldOff size={14} />
                             {isMe
                               ? "Step down as admin"
                               : "Dismiss as admin"}
@@ -597,27 +1074,35 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
 
                         {canRemove && (
                           <>
-                            <DropdownMenu.Separator />
+                            {(canPromote || canDemote) && <DropdownMenu.Separator />}
+
+                            {suspendedUntil ? (
+                              <DropdownMenu.Item
+                                onSelect={() =>
+                                  void unsuspendMembers([member])
+                                }
+                              >
+                                <TimerReset size={14} />
+                                Lift suspension
+                              </DropdownMenu.Item>
+                            ) : (
+                              <DropdownMenu.Item
+                                onSelect={() =>
+                                  setSuspendTargets([member])
+                                }
+                              >
+                                <TimerOff size={14} />
+                                Suspend…
+                              </DropdownMenu.Item>
+                            )}
 
                             <DropdownMenu.Item
                               color="red"
                               onSelect={() =>
-                                mutate(
-                                  API_ENDPOINTS.RemoveGroupMember,
-                                  { userId: member.userId },
-                                  `${member.fullName} removed.`,
-                                  {
-                                    title: `Remove ${member.fullName}?`,
-                                    consequences: [
-                                      `${member.fullName} leaves "${group.name}" and stops getting its messages.`,
-                                      "They can be added back later.",
-                                    ],
-                                    confirmLabel: "Remove",
-                                    danger: true,
-                                  },
-                                )
+                                void removeMembers([member])
                               }
                             >
+                              <UserMinus size={14} />
                               Remove from group
                             </DropdownMenu.Item>
                           </>
@@ -629,21 +1114,14 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
               );
             })}
           </Flex>
-
-          <Separator size="4" />
+          </Section>
 
           {/* ==================================================
               PERMISSIONS
           ================================================== */}
 
+          <Section icon={<Shield size={15} />} title="Who can…">
           <Flex direction="column" gap="2">
-            <Flex align="center" gap="2">
-              <Shield size={16} />
-              <Text size="2" weight="bold">
-                Who can…
-              </Text>
-            </Flex>
-
             {isAdmin ? (
               <Link
                 href={`${Routes.Settings}?tab=groups`}
@@ -678,25 +1156,28 @@ const GroupPanel: React.FC<GroupPanelProps> = ({
               </Flex>
             ))}
           </Flex>
-
-          <Separator size="4" />
-
-          <Button
-            color="red"
-            variant="soft"
-            onClick={() => {
-              setNewAdminId("");
-              setConfirmLeave(true);
-            }}
-            disabled={busy}
-          >
-            <LogOut size={15} />
-            Leave group
-          </Button>
+          </Section>
         </Flex>
       </ScrollArea>
 
       {confirmDialog}
+
+      <SuspendDialog
+        open={suspendTargets !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSuspendTargets(null);
+          }
+        }}
+        targetLabel={suspendTargets ? peopleLabel(suspendTargets) : ""}
+        description={
+          suspendTargets && suspendTargets.length > 1
+            ? `${suspendTargets.map((member) => member.fullName).join(", ")} can still read "${group.name}" but can't send messages until the suspension ends or an admin lifts it.`
+            : `They can still read "${group.name}" but can't send messages until the suspension ends or an admin lifts it.`
+        }
+        busy={busy}
+        onConfirm={(minutes) => void suspendMembers(minutes)}
+      />
 
       <AlertDialog.Root
         open={confirmLeave}

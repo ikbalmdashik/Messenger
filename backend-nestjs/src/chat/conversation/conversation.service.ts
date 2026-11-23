@@ -9,7 +9,19 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository } from "typeorm";
 
 import { ConversationEntity } from "./entities/conversation.entity";
-import { ConversationParticipantEntity } from "./entities/conversation-participant.entity";
+import {
+  activeSuspension,
+  ConversationParticipantEntity,
+  suspensionEnd,
+} from "./entities/conversation-participant.entity";
+
+export interface DirectSuspensionStatus {
+  conversationId: number;
+  /** I can't send until then (set by the other person). */
+  mySuspendedUntil: Date | null;
+  /** I suspended the other person until then. */
+  theirSuspendedUntil: Date | null;
+}
 
 import { UsersEntity } from "@/auth/entities/auth.entity";
 import { ChatMessageEntity } from "../entities/chat.entity";
@@ -470,6 +482,15 @@ export class ConversationService {
       );
     }
 
+    lastMessageQuery.andWhere(
+      `NOT EXISTS (
+        SELECT 1 FROM "message_hidden" hidden
+        WHERE hidden."messageId" = message."messageId"
+          AND hidden."userId" = :viewerId
+      )`,
+      { viewerId: Number(forUserId) },
+    );
+
     const lastMessage =
       await lastMessageQuery
         .orderBy("message.createdAt", "DESC")
@@ -623,6 +644,154 @@ export class ConversationService {
 
     return participant;
   }
+
+  /* ==========================================================
+     DIRECT-CHAT SUSPENSION
+  ========================================================== */
+
+  private async loadDirectPair(
+    conversationId: number,
+    userId: number,
+  ) {
+    const conversation =
+      await this.getConversationForUser(
+        conversationId,
+        userId,
+      );
+
+    if (conversation.type !== "DIRECT") {
+      throw new BadRequestException(
+        "Use the group tools to suspend group members.",
+      );
+    }
+
+    const participants =
+      await this.participantRepository.find({
+        where: {
+          conversationId: conversation.conversationId,
+        },
+      });
+
+    const me = participants.find(
+      (participant) =>
+        Number(participant.userId) === Number(userId),
+    );
+
+    const other = participants.find(
+      (participant) =>
+        Number(participant.userId) !== Number(userId),
+    );
+
+    if (!me || !other) {
+      throw new NotFoundException(
+        "Conversation not found.",
+      );
+    }
+
+    return { conversation, me, other };
+  }
+
+  private toSuspensionStatus(
+    conversationId: number,
+    me: ConversationParticipantEntity,
+    other: ConversationParticipantEntity,
+  ): DirectSuspensionStatus {
+    return {
+      conversationId: Number(conversationId),
+      mySuspendedUntil: activeSuspension(me),
+      theirSuspendedUntil: activeSuspension(other),
+    };
+  }
+
+  async getDirectSuspension(
+    conversationId: number,
+    userId: number,
+  ) {
+    const { conversation, me, other } =
+      await this.loadDirectPair(conversationId, userId);
+
+    return {
+      ...this.toSuspensionStatus(
+        conversation.conversationId,
+        me,
+        other,
+      ),
+      otherUserId: Number(other.userId),
+    };
+  }
+
+  /**
+   * Stop the other person in a direct chat from
+   * messaging me for a while (null / 0 = until
+   * lifted).
+   */
+  async suspendDirect(
+    conversationId: number,
+    userId: number,
+    durationMinutes: unknown,
+  ) {
+    const until = suspensionEnd(durationMinutes);
+
+    if (Number.isNaN(until.getTime())) {
+      throw new BadRequestException(
+        "Choose a valid suspension length.",
+      );
+    }
+
+    const { conversation, me, other } =
+      await this.loadDirectPair(conversationId, userId);
+
+    other.suspendedUntil = until;
+    other.suspendedById = Number(userId);
+
+    await this.participantRepository.save(other);
+
+    return {
+      ...this.toSuspensionStatus(
+        conversation.conversationId,
+        me,
+        other,
+      ),
+      otherUserId: Number(other.userId),
+    };
+  }
+
+  /**
+   * Only the person who suspended can lift it.
+   */
+  async unsuspendDirect(
+    conversationId: number,
+    userId: number,
+  ) {
+    const { conversation, me, other } =
+      await this.loadDirectPair(conversationId, userId);
+
+    const wasActive = Boolean(activeSuspension(other));
+
+    if (wasActive) {
+      if (
+        other.suspendedById !== null &&
+        Number(other.suspendedById) !== Number(userId)
+      ) {
+        throw new BadRequestException(
+          "You can't lift this suspension.",
+        );
+      }
+
+      other.suspendedUntil = null;
+      other.suspendedById = null;
+
+      await this.participantRepository.save(other);
+    }
+
+    return {
+      ...this.toSuspensionStatus(
+        conversation.conversationId,
+        me,
+        other,
+      ),
+      otherUserId: Number(other.userId),
+      changed: wasActive,
+    };
+  }
 }
-
-

@@ -11,6 +11,7 @@ import { ConversationEntity } from "./conversation/entities/conversation.entity"
 
 import { ChatMessageEntity } from "./entities/chat.entity";
 import { MessageReactionEntity } from "./entities/message-reaction.entity";
+import { MessageHiddenEntity } from "./entities/message-hidden.entity";
 import { UsersEntity } from "@/auth/entities/auth.entity";
 
 import { AuthModule } from "@/auth/auth.module";
@@ -23,6 +24,7 @@ import { ConversationParticipantEntity } from "./conversation/entities/conversat
       ChatMessageEntity,
       ConversationParticipantEntity,
       MessageReactionEntity,
+      MessageHiddenEntity,
       UsersEntity,
       ConversationEntity,
     ]),

@@ -138,8 +138,8 @@ export const useConfirm = () => {
 
         {options?.consequences && options.consequences.length > 0 && (
           <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
-            {options.consequences.map((item) => (
-              <li key={item}>{item}</li>
+            {options.consequences.map((item, index) => (
+              <li key={index}>{item}</li>
             ))}
           </ul>
         )}

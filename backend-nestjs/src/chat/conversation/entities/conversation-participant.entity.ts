@@ -81,6 +81,24 @@ export class ConversationParticipantEntity {
   })
   isHidden: boolean;
 
+  /**
+   * Suspended from sending messages until this
+   * moment. GROUP: set by an admin. DIRECT: set
+   * by the other person. Null / past = not
+   * suspended.
+   */
+  @Column({
+    type: "timestamp",
+    nullable: true,
+  })
+  suspendedUntil: Date | null;
+
+  @Column({
+    type: "integer",
+    nullable: true,
+  })
+  suspendedById: number | null;
+
   @ManyToOne(
     () => ConversationEntity,
     (conversation) =>
@@ -105,3 +123,86 @@ export class ConversationParticipantEntity {
   })
   user: UsersEntity;
 }
+
+/**
+ * "Until lifted" suspensions are stored far in
+ * the future.
+ */
+export const INDEFINITE_SUSPENSION_YEAR = 9999;
+
+export const MAX_SUSPENSION_MINUTES = 60 * 24 * 365;
+
+/**
+ * Active suspension end, or null.
+ */
+export const activeSuspension = (
+  participant:
+    | Pick<ConversationParticipantEntity, "suspendedUntil">
+    | null
+    | undefined,
+): Date | null => {
+  const until = participant?.suspendedUntil
+    ? new Date(participant.suspendedUntil)
+    : null;
+
+  return until && until.getTime() > Date.now()
+    ? until
+    : null;
+};
+
+/**
+ * `durationMinutes`: positive number, or null /
+ * 0 for "until lifted".
+ */
+export const suspensionEnd = (
+  durationMinutes: unknown,
+): Date => {
+  if (
+    durationMinutes === null ||
+    durationMinutes === undefined ||
+    Number(durationMinutes) === 0
+  ) {
+    return new Date(
+      Date.UTC(INDEFINITE_SUSPENSION_YEAR, 11, 31),
+    );
+  }
+
+  const minutes = Number(durationMinutes);
+
+  if (
+    !Number.isFinite(minutes) ||
+    minutes < 1 ||
+    minutes > MAX_SUSPENSION_MINUTES
+  ) {
+    return new Date(NaN);
+  }
+
+  return new Date(Date.now() + Math.round(minutes) * 60_000);
+};
+
+export const describeDuration = (
+  durationMinutes: unknown,
+) => {
+  const minutes = Number(durationMinutes);
+
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return "until further notice";
+  }
+
+  const units: Array<[number, string]> = [
+    [60 * 24 * 7, "week"],
+    [60 * 24, "day"],
+    [60, "hour"],
+    [1, "minute"],
+  ];
+
+  for (const [size, name] of units) {
+    if (minutes >= size && minutes % size === 0) {
+      const count = minutes / size;
+
+      return `for ${count} ${name}${count === 1 ? "" : "s"}`;
+    }
+  }
+
+  return `for ${Math.round(minutes)} minutes`;
+};

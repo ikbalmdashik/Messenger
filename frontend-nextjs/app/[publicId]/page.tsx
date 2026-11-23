@@ -2,7 +2,7 @@
 
 import axios from "axios";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import {
@@ -49,6 +49,7 @@ import {
   prettyUrl,
   visibilityLabel,
 } from "../lib/profile";
+import useSessionEvents from "@/app/lib/useSessionEvents";
 import useConfirm from "../components/shared/useConfirm";
 
 /* ============================================================
@@ -117,7 +118,7 @@ export default function PublicProfile() {
   const [messageLoading, setMessageLoading] = useState(false);
   const [messageError, setMessageError] = useState("");
 
-  useEffect(() => {
+  const loadViewer = useCallback(() => {
     axios
       .post(API_ENDPOINTS.GetUserByToken, {}, { withCredentials: true })
       .then((response) => {
@@ -128,13 +129,21 @@ export default function PublicProfile() {
   }, []);
 
   useEffect(() => {
-    if (!publicId) {
-      return;
-    }
+    loadViewer();
+  }, [loadViewer]);
 
-    const load = async () => {
+  /**
+   * quiet: refresh in place (no "Loading…" flash),
+   * e.g. after the viewer was signed out.
+   */
+  const loadProfile = useCallback(
+    async (quiet = false) => {
+      if (!publicId) {
+        return;
+      }
+
       try {
-        setLoading(true);
+        if (!quiet) setLoading(true);
         setError("");
 
         const response = await axios.post<GetUserByPublicIdResponse | null>(
@@ -154,10 +163,27 @@ export default function PublicProfile() {
       } finally {
         setLoading(false);
       }
-    };
+    },
+    [publicId],
+  );
 
-    void load();
-  }, [publicId]);
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  /*
+   * Live: the viewer's session was signed out (another
+   * tab or device). The server now treats this page as
+   * anonymous, so reload it as the public view: private
+   * sections, owner tools and Message/Block go away.
+   */
+  useSessionEvents({
+    onRevoked: () => {
+      setViewerId(null);
+      setMessageError("");
+      void loadProfile(true);
+    },
+  });
 
   const goBack = () =>
     window.history.length > 1 ? router.back() : router.push(Routes.Chat);
@@ -394,23 +420,11 @@ export default function PublicProfile() {
                   Unblock
                 </Button>
               ) : user.blockedMe ? null : (
-                <Flex gap="2">
-                  <Button onClick={handleMessage} loading={messageLoading}>
-                    <MessageCircle size={16} />
-                    {viewerId === null ? "Log in to message" : "Message"}
-                  </Button>
-
-                  {viewerId !== null && (
-                    <Button
-                      variant="soft"
-                      color="red"
-                      onClick={() => toggleBlock(true)}
-                      loading={blockBusy}
-                    >
-                      Block
-                    </Button>
-                  )}
-                </Flex>
+                // Blocking lives in the chat's profile panel.
+                <Button onClick={handleMessage} loading={messageLoading}>
+                  <MessageCircle size={16} />
+                  {viewerId === null ? "Log in to message" : "Message"}
+                </Button>
               )}
 
               {messageError && (

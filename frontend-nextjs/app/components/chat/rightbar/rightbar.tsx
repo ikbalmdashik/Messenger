@@ -1,14 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import axios from "axios";
-import Link from "next/link";
+import { toast } from "sonner";
 
 import {
   Avatar,
   Box,
-  Button,
   Flex,
   IconButton,
   ScrollArea,
@@ -19,7 +18,7 @@ import {
 import {
   ArrowLeft,
   BadgeCheck,
-  ExternalLink,
+  Ban,
   Globe,
   GraduationCap,
   Info,
@@ -28,11 +27,27 @@ import {
   Mail,
   MapPin,
   Phone,
+  ShieldCheck,
+  TimerOff,
+  TimerReset,
+  Trash2,
+  UserRound,
 } from "lucide-react";
 
 import API_ENDPOINTS, {
+  BlockStatus,
+  DirectSuspensionStatus,
   GetUserByPublicIdResponse,
 } from "@/app/routes/api";
+import { getErrorMessage } from "@/app/lib/apiError";
+import {
+  BLOCK_UPDATED_EVENT,
+  SUSPENSION_UPDATED_EVENT,
+} from "@/app/lib/chatEvents";
+import { activeUntil, formatUntil } from "@/app/lib/suspension";
+import SuspendDialog from "../shared/SuspendDialog";
+import useConfirm from "../../shared/useConfirm";
+import { HighlightAction, Section } from "../shared/PanelParts";
 
 
 import {
@@ -47,23 +62,13 @@ interface RightbarProps {
 
   publicId?: string | null;
 
+  /** For "Delete chat". */
+  conversationId?: number | null;
+
+  /** Mobile only: back to the chat. */
   onBack?: () => void;
 }
 
-const SectionTitle = ({
-  icon,
-  title,
-}: {
-  icon: React.ReactNode;
-  title: string;
-}) => (
-  <Flex align="center" gap="2" mb="2">
-    <span className="text-[var(--gray-11)]">{icon}</span>
-    <Text size="2" weight="bold">
-      {title}
-    </Text>
-  </Flex>
-);
 
 const Row = ({
   icon,
@@ -90,12 +95,44 @@ const PrivateNote = () => (
 const Rightbar: React.FC<RightbarProps> = ({
   receiverId,
   publicId = null,
+  conversationId = null,
   onBack,
 }) => {
   const [profile, setProfile] =
     useState<GetUserByPublicIdResponse | null>(null);
 
   const [loading, setLoading] = useState(false);
+
+  const [busy, setBusy] = useState<
+    "block" | "delete" | "suspend" | null
+  >(null);
+
+  const [suspension, setSuspension] =
+    useState<DirectSuspensionStatus | null>(null);
+
+  const [suspendOpen, setSuspendOpen] = useState(false);
+
+  // Bumped to re-read the profile (e.g. after a block
+  // change, which can hide private details).
+  const [version, setVersion] = useState(0);
+
+  const { confirm, confirmDialog } = useConfirm();
+
+  useEffect(() => {
+    const handleBlockUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId: number }>).detail;
+
+      if (Number(detail?.userId) === Number(receiverId)) {
+        setVersion((value) => value + 1);
+      }
+    };
+
+    window.addEventListener(BLOCK_UPDATED_EVENT, handleBlockUpdated);
+
+    return () => {
+      window.removeEventListener(BLOCK_UPDATED_EVENT, handleBlockUpdated);
+    };
+  }, [receiverId]);
 
   useEffect(() => {
     if (!publicId) {
@@ -134,7 +171,220 @@ const Rightbar: React.FC<RightbarProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [publicId]);
+  }, [publicId, version]);
+
+  const toggleBlock = useCallback(async () => {
+    if (!profile) {
+      return;
+    }
+
+    const blocking = !profile.blockedByMe;
+
+    const ok = await confirm(
+      blocking
+        ? {
+            title: `Block ${profile.fullName}?`,
+            consequences: [
+              "Neither of you can message the other.",
+              "They can't add you to groups or see your private details.",
+              "Your chat history stays; you can unblock any time.",
+            ],
+            confirmLabel: "Block",
+            danger: true,
+          }
+        : {
+            title: `Unblock ${profile.fullName}?`,
+            consequences: [
+              "You can message each other again.",
+              "Your privacy settings apply to them as usual.",
+            ],
+            confirmLabel: "Unblock",
+          },
+    );
+
+    if (!ok) {
+      return;
+    }
+
+    try {
+      setBusy("block");
+
+      const response = await axios.post<BlockStatus>(
+        blocking ? API_ENDPOINTS.BlockUser : API_ENDPOINTS.UnblockUser,
+        { userId: profile.userId },
+        { withCredentials: true },
+      );
+
+      setProfile((current) =>
+        current ? { ...current, ...response.data } : current,
+      );
+
+      toast.success(
+        blocking
+          ? `${profile.fullName} is blocked.`
+          : `${profile.fullName} is unblocked.`,
+      );
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, blocking ? "Couldn't block." : "Couldn't unblock."),
+      );
+    } finally {
+      setBusy(null);
+    }
+  }, [profile, confirm]);
+
+  /* Suspension status of this direct chat. */
+  useEffect(() => {
+    setSuspension(null);
+
+    const id = Number(conversationId);
+
+    if (!Number.isFinite(id) || id <= 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const load = () => {
+      axios
+        .post<DirectSuspensionStatus>(
+          API_ENDPOINTS.SuspensionStatus,
+          { conversationId: id },
+          { withCredentials: true },
+        )
+        .then((response) => {
+          if (!cancelled) {
+            setSuspension(response.data ?? null);
+          }
+        })
+        .catch(() => undefined);
+    };
+
+    load();
+
+    const handleUpdated = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ conversationId: number }>
+      ).detail;
+
+      if (Number(detail?.conversationId) === id) {
+        load();
+      }
+    };
+
+    window.addEventListener(SUSPENSION_UPDATED_EVENT, handleUpdated);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SUSPENSION_UPDATED_EVENT, handleUpdated);
+    };
+  }, [conversationId]);
+
+  const theirSuspendedUntil = activeUntil(
+    suspension?.theirSuspendedUntil,
+  );
+
+  const changeSuspension = useCallback(
+    async (minutes: number | null | "lift") => {
+      const id = Number(conversationId);
+
+      if (!Number.isFinite(id) || id <= 0) {
+        return;
+      }
+
+      const lifting = minutes === "lift";
+
+      if (
+        lifting &&
+        !(await confirm({
+          title: `Lift ${profile?.fullName ?? "their"} suspension?`,
+          consequences: ["They can send you messages again right away."],
+          confirmLabel: "Lift suspension",
+        }))
+      ) {
+        return;
+      }
+
+      try {
+        setBusy("suspend");
+
+        const response = await axios.post<DirectSuspensionStatus>(
+          lifting ? API_ENDPOINTS.UnsuspendDirect : API_ENDPOINTS.SuspendDirect,
+          lifting
+            ? { conversationId: id }
+            : { conversationId: id, durationMinutes: minutes },
+          { withCredentials: true },
+        );
+
+        setSuspension(response.data);
+        setSuspendOpen(false);
+
+        window.dispatchEvent(
+          new CustomEvent(SUSPENSION_UPDATED_EVENT, {
+            detail: { conversationId: id },
+          }),
+        );
+
+        toast.success(
+          lifting
+            ? `${profile?.fullName ?? "They"} can send messages again.`
+            : `${profile?.fullName ?? "They"} is suspended.`,
+        );
+      } catch (error) {
+        toast.error(
+          getErrorMessage(
+            error,
+            lifting ? "Couldn't lift the suspension." : "Couldn't suspend.",
+          ),
+        );
+      } finally {
+        setBusy(null);
+      }
+    },
+    [conversationId, profile?.fullName, confirm],
+  );
+
+  /**
+   * Delete for me. The server's "conversation_deleted"
+   * event closes the chat.
+   */
+  const deleteChat = useCallback(async () => {
+    const id = Number(conversationId);
+
+    if (!Number.isFinite(id) || id <= 0) {
+      return;
+    }
+
+    const ok = await confirm({
+      title: "Delete this chat?",
+      consequences: [
+        "All messages are removed for you.",
+        `${profile?.fullName ?? "The other person"} keeps their copy.`,
+      ],
+      confirmLabel: "Delete chat",
+      danger: true,
+    });
+
+    if (!ok) {
+      return;
+    }
+
+    try {
+      setBusy("delete");
+
+      await axios.post(
+        API_ENDPOINTS.DeleteChat,
+        { conversationId: id },
+        { withCredentials: true },
+      );
+
+      toast.success("Chat deleted.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Couldn't delete the chat."));
+    } finally {
+      setBusy(null);
+    }
+  }, [conversationId, profile?.fullName, confirm]);
 
   if (!receiverId) {
     return (
@@ -238,6 +488,15 @@ const Rightbar: React.FC<RightbarProps> = ({
                 </Text>
               )}
 
+              {theirSuspendedUntil && (
+                <Flex align="center" gap="1">
+                  <TimerOff size={12} className="text-amber-500" />
+                  <Text size="1" color="amber">
+                    Suspended {formatUntil(theirSuspendedUntil)}
+                  </Text>
+                </Flex>
+              )}
+
               {location && (
                 <Flex align="center" gap="1">
                   <MapPin size={13} color="var(--gray-10)" />
@@ -247,20 +506,88 @@ const Rightbar: React.FC<RightbarProps> = ({
                 </Flex>
               )}
 
-              <Button variant="soft" size="2" mt="2" asChild>
-                <Link href={`/${encodeURIComponent(profile.publicId)}`}>
-                  <ExternalLink size={14} />
-                  View full profile
-                </Link>
-              </Button>
+            </Flex>
+
+            {/* HIGHLIGHTED ACTIONS */}
+
+            <Flex gap="1">
+              <HighlightAction
+                icon={<UserRound size={18} />}
+                label="Profile"
+                href={`/${encodeURIComponent(profile.publicId)}`}
+              />
+
+              <HighlightAction
+                icon={
+                  profile.blockedByMe ? (
+                    <ShieldCheck size={18} />
+                  ) : (
+                    <Ban size={18} />
+                  )
+                }
+                label={
+                  busy === "block"
+                    ? "…"
+                    : profile.blockedByMe
+                      ? "Unblock"
+                      : "Block"
+                }
+                danger={!profile.blockedByMe}
+                disabled={busy !== null}
+                onClick={() => void toggleBlock()}
+              />
+
+              <HighlightAction
+                icon={
+                  theirSuspendedUntil ? (
+                    <TimerReset size={18} />
+                  ) : (
+                    <TimerOff size={18} />
+                  )
+                }
+                label={
+                  busy === "suspend"
+                    ? "…"
+                    : theirSuspendedUntil
+                      ? "Unsuspend"
+                      : "Suspend"
+                }
+                disabled={
+                  busy !== null ||
+                  !conversationId ||
+                  profile.blockedByMe ||
+                  profile.blockedMe
+                }
+                title={
+                  theirSuspendedUntil
+                    ? "Let them send messages again"
+                    : "Stop them from messaging you for a while"
+                }
+                onClick={() =>
+                  theirSuspendedUntil
+                    ? void changeSuspension("lift")
+                    : setSuspendOpen(true)
+                }
+              />
+
+              <HighlightAction
+                icon={<Trash2 size={18} />}
+                label={busy === "delete" ? "…" : "Delete chat"}
+                danger
+                disabled={busy !== null || !conversationId}
+                onClick={() => void deleteChat()}
+              />
             </Flex>
 
             <Separator size="4" />
 
             {/* CONTACT */}
 
-            <Box>
-              <SectionTitle icon={<Phone size={15} />} title="Contact" />
+            <Section
+              icon={<Phone size={15} />}
+              title="Contact info"
+              defaultOpen
+            >
 
               {profile.hidden.contact ? (
                 <PrivateNote />
@@ -316,17 +643,14 @@ const Rightbar: React.FC<RightbarProps> = ({
                   ))}
                 </Flex>
               )}
-            </Box>
-
-            <Separator size="4" />
+            </Section>
 
             {/* EDUCATION */}
 
-            <Box>
-              <SectionTitle
-                icon={<GraduationCap size={15} />}
-                title="Education"
-              />
+            <Section
+              icon={<GraduationCap size={15} />}
+              title="Education"
+            >
 
               {profile.hidden.education ? (
                 <PrivateNote />
@@ -359,10 +683,35 @@ const Rightbar: React.FC<RightbarProps> = ({
                   })}
                 </Flex>
               )}
-            </Box>
+            </Section>
+
+            {/* LOCATION */}
+
+            <Section icon={<MapPin size={15} />} title="Location">
+              {profile.hidden.location ? (
+                <PrivateNote />
+              ) : location ? (
+                <Text size="2">{location}</Text>
+              ) : (
+                <Text size="1" color="gray">
+                  Nothing shared.
+                </Text>
+              )}
+            </Section>
           </Flex>
         )}
       </ScrollArea>
+
+      {confirmDialog}
+
+      <SuspendDialog
+        open={suspendOpen}
+        onOpenChange={setSuspendOpen}
+        targetLabel={profile?.fullName ?? "this person"}
+        description="They can still read this chat but can't send you messages until the suspension ends or you lift it."
+        busy={busy === "suspend"}
+        onConfirm={(minutes) => void changeSuspension(minutes)}
+      />
     </Flex>
   );
 };
